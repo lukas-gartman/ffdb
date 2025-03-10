@@ -21,7 +21,6 @@ static inline ssize_t get_memory_map_size(size_t init_size, size_t page_size) {
 FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
     assert(filepath != nullptr);
 
-    //fd = -1;
     page_size = getpagesize();
 
     fd = open(filepath, flags, mode);
@@ -30,9 +29,10 @@ FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
     memory_map_size = lseek(fd, 0, SEEK_END);
     assert(memory_map_size != (size_t) (-1));
 
-    // Assume memory_map_size == 0
-    memory_map_size = get_memory_map_size(init_size, page_size);
-    assert(ftruncate(fd, memory_map_size) >= 0);
+    if (memory_map_size == 0) {
+        memory_map_size = get_memory_map_size(init_size, page_size);
+        assert(ftruncate(fd, memory_map_size) >= 0);
+    }
 
     this->filepath = strdup(filepath);
     assert(this->filepath != nullptr);
@@ -49,14 +49,9 @@ FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
 
     current_base = base;
 
-    unsigned char *byte = current_base;
-
     a = new BuddyAllocator(init_size, 32);
-    Ref<unsigned int> firstInt = a->malloc<unsigned int>();
-    Ref<unsigned char> firstByte = a->malloc<unsigned char>();
-    *firstInt = 0xAABBCCDD;
-    *firstByte = 0xFF;
-    delete a;
+    Ref<unsigned int> test = a->malloc<unsigned int>();
+    *test = 0xAABBCCDD;
 }
 
 FFDB::~FFDB() {
