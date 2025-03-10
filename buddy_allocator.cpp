@@ -2,6 +2,30 @@
 
 #include <cstdlib>
 
+void BuddyAllocator::free_internal(Object obj, size_t bytes) {
+    BlockDescriptor *bd = (BlockDescriptor *)::malloc(sizeof(BlockDescriptor));
+    bd->obj = obj;
+    bd->size = block_size;
+
+    BlockDescriptor *current_bd = free_list;
+    BlockDescriptor *prev_bd = nullptr;
+
+    while (bd->obj > current_bd->obj) {
+        prev_bd = current_bd;
+        current_bd = current_bd->next;
+    }
+
+    if (prev_bd != nullptr) {
+        prev_bd->next = bd;
+    } else {
+        free_list = bd;
+    }
+
+
+    if (bd->next != nullptr) bd->next = current_bd;
+
+}
+
 Object BuddyAllocator::malloc_internal(size_t bytes) {
     BlockDescriptor *top = free_list;
     free_list = free_list->next;
