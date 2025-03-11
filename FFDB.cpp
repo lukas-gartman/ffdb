@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <iostream>
+#include <errno.h>
 
 // Align init_size to page_size
 static inline ssize_t get_memory_map_size(size_t init_size, size_t page_size) {
@@ -19,23 +20,33 @@ static inline ssize_t get_memory_map_size(size_t init_size, size_t page_size) {
 }
 
 FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
-    assert(filepath != nullptr);
+    if (filepath == nullptr) throw std::invalid_argument("filepath is null");
 
     page_size = getpagesize();
 
     fd = open(filepath, flags, mode);
-    assert(fd >= 0);
+    if (fd == -1) throw std::runtime_error("Errno: " + std::to_string(errno));
 
     memory_map_size = lseek(fd, 0, SEEK_END);
-    assert(memory_map_size != (size_t) (-1));
+    if (memory_map_size == -1) {
+        close(fd);
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
 
+    // Initialize file if it was just created.
     if (memory_map_size == 0) {
         memory_map_size = get_memory_map_size(init_size, page_size);
-        assert(ftruncate(fd, memory_map_size) >= 0);
+        if (ftruncate(fd, memory_map_size) == -1) {
+            close(fd);
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+        }
     }
 
     this->filepath = strdup(filepath);
-    assert(this->filepath != nullptr);
+    if (this->filepath == nullptr) {
+        close(fd);
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
 
     base = (unsigned char *)(
         mmap(nullptr,
@@ -46,6 +57,11 @@ FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
              0
             )
     );
+    if (base == MAP_FAILED) {
+        ::free((void *)this->filepath);
+        close(fd);
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
 
     current_base = base;
 
