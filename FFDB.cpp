@@ -65,9 +65,62 @@ FFDB::FFDB(const char *filepath, int flags, int mode, size_t init_size) {
 
     current_base = base;
 
+    // Initialize the allocator with 1024 bytes and a block size of 32 bytes
     a = new BuddyAllocator(init_size, 32);
-    Ref<unsigned int> test = a->malloc<unsigned int>();
-    *test = 0xAABBCCDD;
+
+    // Allocate a block of 64 bytes
+    Ref<unsigned int> block1 = a->malloc<unsigned int>(64 - sizeof(unsigned int));
+    assert(block1 != nullptr);
+    *block1 = 0xAABBCCDD;
+    std::cout << "Allocated 64 bytes and set value to 0xAABBCCDD\n";
+
+    // Allocate a block of 128 bytes
+    Ref<unsigned int> block2 = a->malloc<unsigned int>(128 - sizeof(unsigned int));
+    assert(block2 != nullptr);
+    *block2 = 0x11223344;
+    std::cout << "Allocated 128 bytes and set value to 0x11223344\n";
+
+    // Free the first block
+    a->free(block1, 64 - sizeof(unsigned int));
+    std::cout << "Freed 64 bytes\n";
+
+    // Free the second block
+    a->free(block2, 128 - sizeof(unsigned int));
+    std::cout << "Freed 128 bytes\n";
+
+    // Allocate a block of 256 bytes
+    Ref<unsigned int> block3 = a->malloc<unsigned int>(256 - sizeof(unsigned int));
+    assert(block3 != nullptr);
+    *block3 = 0x55667788;
+    std::cout << "Allocated 256 bytes and set value to 0x55667788\n";
+
+    // Free the third block
+    a->free(block3, 256 - sizeof(unsigned int));
+    std::cout << "Freed 256 bytes\n";
+
+    // Test allocation of a block that is too large
+    try {
+        Ref<unsigned int> block4 = a->malloc<unsigned int>(2048 - sizeof(unsigned int)); // Should throw std::bad_alloc
+        assert(false); // Should not reach here
+    } catch (const std::bad_alloc&) {
+        std::cout << "Caught std::bad_alloc as expected\n";
+    }
+
+    // Test fragmentation and coalescing
+    Ref<unsigned int> block5 = a->malloc<unsigned int>(32 - sizeof(unsigned int));
+    Ref<unsigned int> block6 = a->malloc<unsigned int>(32 - sizeof(unsigned int));
+    a->free(block5, 32 - sizeof(unsigned int));
+    a->free(block6, 32 - sizeof(unsigned int));
+    Ref<unsigned int> block7 = a->malloc<unsigned int>(64 - sizeof(unsigned int)); // Should coalesce the two 32-byte blocks
+    assert(block7 != nullptr);
+    std::cout << "Allocated 64 bytes after coalescing\n";
+
+    // Validate the coalesced block by writing to it
+    *block7 = 0x99AABBCC;
+
+    // This should appear after the coalesced block (64 bytes)
+    Ref<unsigned int> block8 = a->malloc<unsigned int>(64 - sizeof(unsigned int)); // Should coalesce the two 32-byte blocks
+    *block8 = 0xDDEEFF00;
 }
 
 FFDB::~FFDB() {
