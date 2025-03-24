@@ -10,7 +10,7 @@ Allocator::Allocator(Ref<State> state, std::size_t memory_map_size):
     unused_block_descriptor_list(state->free_descriptors),
     last_free_block({0, 0}) {}
 
-Object Allocator::malloc_internal(const std::size_t bytes) {
+Object Allocator::malloc_internal(std::size_t bytes) {
     Object obj;
 
     // Try using the last free block.
@@ -101,12 +101,13 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     while (current_descriptor->next != 0) {
         const std::size_t descr_block_size = current_descriptor->block.size;
 
-        if (block_size >= descr_block_size) {
+        if (block_size <= descr_block_size &&
+            (best_fit == 0 || descr_block_size < best_fit->block.size)) {
             best_fit_prev = prev_descriptor;
             best_fit = current_descriptor;
 
             // Perfect fit. No need to search further.
-            if (block_size == descr_block_size) break;
+            if (best_fit->block.size == block_size) break;
         }
 
         prev_descriptor = current_descriptor;
