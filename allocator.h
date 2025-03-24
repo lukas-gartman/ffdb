@@ -13,7 +13,7 @@ public:
         Object free_descriptors;
     };
 
-    Allocator(Ref<State> state, std::size_t memory_map_size);
+    Allocator(State *state, std::size_t memory_map_size);
 
     template <class A> Ref<A> malloc(const std::size_t extra_bytes = 0) {
         return malloc_internal(sizeof(A) + extra_bytes);
@@ -39,7 +39,7 @@ private:
         Ref<BlockDescriptor> next;
     };
 
-    Ref<State> state;
+    State *state;
     std::size_t memory_map_size;
 
     Object local_top;

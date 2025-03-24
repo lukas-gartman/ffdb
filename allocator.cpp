@@ -1,8 +1,11 @@
 #include "allocator.h"
 
+#include <cassert>
+#include <iostream>
+#include <ostream>
 #include <stdexcept>
 
-Allocator::Allocator(Ref<State> state, std::size_t memory_map_size):
+Allocator::Allocator(State* state, std::size_t memory_map_size):
     state(state),
     memory_map_size(memory_map_size),
     local_top(state->top),
@@ -65,9 +68,6 @@ Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
         block_descriptor = local_top;
         local_top += sizeof(BlockDescriptor);
     }
-
-    // TODO: Temp tag for identifying block descriptors in the memory map. Remove later.
-    block_descriptor->bd_tag = 0xBD;
 
     block_descriptor->block.obj = obj;
     block_descriptor->block.size = block_size;
