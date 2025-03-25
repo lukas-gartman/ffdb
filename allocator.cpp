@@ -47,6 +47,43 @@ Object Allocator::malloc_internal(std::size_t bytes) {
 }
 
 void Allocator::free_internal(Object obj, std::size_t bytes) {
+    if (obj == 0) return;
+
+    // TODO: When implementing transactions the below can't happen
+    // TODO: when in the same transaction.
+    if (obj + bytes > local_top) {
+        local_top -= bytes;
+
+        if (last_free_block.obj != 0 &&
+            last_free_block.obj + last_free_block.size == local_top) {
+
+            local_top -= last_free_block.size;
+            last_free_block.obj = 0;
+            last_free_block.size = 0;
+        }
+
+        return;
+    }
+
+    if (last_free_block.obj != 0) {
+        // Merge with last_free_block is adjacent.
+        const bool lsb_is_before = last_free_block.obj + last_free_block.size == obj;
+        const bool lsb_is_after = obj + bytes == last_free_block.obj;
+
+        if (lsb_is_before || lsb_is_after) {
+            last_free_block.obj += bytes;
+
+            if (lsb_is_after) last_free_block.obj = obj;
+
+            return;
+        }
+
+        // Otherwise, it will get replaced.
+        insert_block_descriptor(last_free_block.obj, last_free_block.size);
+    }
+
+    last_free_block.obj = obj;
+    last_free_block.size = bytes;
 }
 
 Ref<Allocator::BlockDescriptor>
@@ -130,7 +167,7 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     best_fit->next = unused_block_descriptor_list;
     unused_block_descriptor_list = best_fit;
 
-    // If the block is that best_fit pointed to is now empty it becomes the
+    // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
     if (best_fit->block.size != 0) {
         insert_block_descriptor(last_free_block.obj, last_free_block.size);
