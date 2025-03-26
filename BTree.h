@@ -33,12 +33,8 @@ public:
     Node(int t, bool is_leaf);
 
     Node *search(T key);
-
-    int findKey(T key);
     void insertNonFull(T key);
     void splitChild(int i, Node *y);
-
-    bool isLeaf() const { return is_leaf; }
 
     friend class BTree<T>;
 };
@@ -50,6 +46,7 @@ private:
     int t; // Minimum degree, the lower bound
 
 public:
+    explicit(false)
     BTree(int t);
 
     Node<T> *search(T key);
