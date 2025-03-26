@@ -64,7 +64,39 @@ void Node<T>::insertNonFull(T key) {
 
 template <Comparable T>
 void Node<T>::splitChild(int i, Node *y) {
+    Node *z = new Node(y->t, y->is_leaf);
+    z->keys.resize(t - 1); // // z will have t-1 keys
 
+    // Copy the upper half of y's keys to z's lower half
+    for (int j = 0; j < t - 1; ++j) {
+        z->keys[j] = y->keys[j + t];
+    }
+
+    if (!y->is_leaf) {
+        // Copy the upper half of y's children to z's lower half
+        for (int j = 0; j < t; ++j) {
+            z->children[j] = y->children[j + t];
+        }
+    }
+
+    // Remove the upper half of y's keys that were copied to z
+    y->keys.resize(t - 1);
+
+    // Move the children to the right to make space for z
+    for (int j = keys.size(); j >= i+1; --j) {
+        children[j+1] = children[j];
+    }
+    // Insert z as a child to the free space we just made
+    children[i+1] = z;
+
+    // Move the keys to the right to make space for the middle key of y
+    for (int j = keys.size() - 1; j >= i; --j) {
+        keys[j+1] = keys[j];
+    }
+    // Insert the middle key of y into the current node
+    keys[i] = y->keys[t - 1];
+    // Increase the number of keys in the current node
+    keys.resize(keys.size() + 1);
 }
 
 template <Comparable T>
