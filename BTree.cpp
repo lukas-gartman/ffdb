@@ -104,3 +104,21 @@ BTree<T>::BTree(int t) {
     this->t =  t;
     root = new Node<T>(t, true);
 }
+
+template <Comparable T>
+void BTree<T>::insert(T key) {
+    Node<T> *r = root; // Start at the root
+    // If the root is full, split it
+    if (r->keys.size() == 2*t - 1) {
+        // Create a new root
+        auto *s = new Node<T>(t, false);
+        root = s;
+
+        s->children[0] = r; // Make the old root the child of the new root
+        s->splitChild(0, r); // Split the old root to ensure it is no longer full
+        s->insertNonFull(key);
+    } else {
+        r->insertNonFull(key);
+    }
+}
+
