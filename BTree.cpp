@@ -18,6 +18,19 @@ Node<T>::Node(int t, bool is_leaf) {
 }
 
 template <Comparable T>
+Node<T> *Node<T>::search(T key) {
+    // Check if the current node contains the key
+    int i = 0;
+    while (i < keys.size() && key > keys[i]) {
+        i++;
+    }
+
+    return i <= keys.size() && key == keys[i] ? this // If the key is found in the current node
+       : is_leaf ? nullptr // Nothing further to search
+       : children[i]->search(key); // Look further in the child node
+}
+
+template <Comparable T>
 BTree<T>::BTree(int t) {
     this->t =  t;
     root = new Node<T>(t, true);
