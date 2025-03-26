@@ -25,22 +25,21 @@ public:
  * present in memory.
  */
 TEST(AllocatorTest, MallocTestSeq) {
-    MemoryMapState mm_state(
-        sizeof(Allocator::State) + 16
-    );
+    MemoryMapState mm_state(1024);
 
     current_base = (unsigned char *) mm_state.memory_map;
 
     auto *alloc_state = (Allocator::State *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 0;
+    alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
     current_base += sizeof(Allocator::State);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+    Allocator alloc(alloc_state,
+        mm_state.memory_map_size - sizeof(Allocator::State));
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
     Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
@@ -53,15 +52,67 @@ TEST(AllocatorTest, MallocTestSeq) {
     *d4 = 0xDDDDDDDDDDDDDDDD;
     *d5 = 0xEE;
 
+    const std::size_t TARGET_SIZE = 16;
     unsigned char target[] = {
         0xAA, 0xBB, 0xBB, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD,
         0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xEE
     };
 
-    const size_t DATA_SIZE =
-        mm_state.memory_map_size - sizeof(Allocator::State);
+    for (int i = 0; i <= TARGET_SIZE; i++) {
+        ASSERT_EQ(data[i], target[i]);
+    }
+}
 
-    for (int i = 0; i < DATA_SIZE; i++) {
+/* FreeTestSeq
+ * Tests if Allocator::free successfully frees memory from the top when no
+ * "holes" are present in memory.
+ */
+TEST(AllocatorTest, FreeTestSeq) {
+    MemoryMapState mm_state(1024);
+
+    current_base = (unsigned char *) mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *) current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
+
+    Allocator alloc(alloc_state,
+        mm_state.memory_map_size - sizeof(Allocator::State));
+    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
+
+    *d1 = 0xFF;
+    *d2 = 0xEE;
+    *d3 = 0xDD;
+
+    alloc.free<uint8_t>(d3);
+    alloc.free<uint8_t>(d2);
+    alloc.free<uint8_t>(d1);
+
+    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d6 = alloc.malloc<uint8_t>();
+
+    *d4 = 0xAA;
+    *d5 = 0xBB;
+    *d6 = 0xCC;
+
+    const size_t TARGET_SIZE = 3;
+    unsigned char target[] = {
+        0xAA, 0xBB, 0xCC
+    };
+
+    for (int i = 0; i < TARGET_SIZE; i++) {
+        std::cout << std::hex << (int) data[i] << std::endl;
+    }
+
+    for (int i = 0; i < TARGET_SIZE; i++) {
         ASSERT_EQ(data[i], target[i]);
     }
 }
