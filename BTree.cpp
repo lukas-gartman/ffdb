@@ -122,3 +122,7 @@ void BTree<T>::insert(T key) {
     }
 }
 
+template <Comparable T>
+Node<T> *BTree<T>::search(T key) {
+    return root == nullptr ? nullptr : root->search(key);
+}
