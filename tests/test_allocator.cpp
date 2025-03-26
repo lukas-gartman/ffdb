@@ -58,7 +58,7 @@ TEST(AllocatorTest, MallocTestSeq) {
         0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xEE
     };
 
-    for (int i = 0; i <= TARGET_SIZE; i++) {
+    for (int i = 0; i < TARGET_SIZE; i++) {
         ASSERT_EQ(data[i], target[i]);
     }
 }
@@ -109,6 +109,56 @@ TEST(AllocatorTest, FreeTestSeq) {
     };
 
     for (int i = 0; i < TARGET_SIZE; i++) {
+        std::cout << std::hex << (int) data[i] << std::endl;
+    }
+
+    for (int i = 0; i < TARGET_SIZE; i++) {
+        ASSERT_EQ(data[i], target[i]);
+    }
+}
+
+TEST(AllocatorTest, FreeTestMerge) {
+    MemoryMapState mm_state(1024);
+
+    current_base = (unsigned char *) mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *) current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
+
+    Allocator alloc(alloc_state,
+        mm_state.memory_map_size - sizeof(Allocator::State));
+    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
+
+    *d1 = 0xFF;
+    *d2 = 0xFF;
+    *d3 = 0xFF;
+    *d4 = 0xFF;
+    *d5 = 0xEE;
+
+    alloc.free<uint8_t>(d2);
+    alloc.free<uint8_t>(d1);
+    alloc.free<uint8_t>(d3);
+    alloc.free<uint8_t>(d4);
+
+    Ref<uint32_t> d6 = alloc.malloc<uint32_t>();
+    *d6 = 0xDDCCBBAA;
+
+    const size_t TARGET_SIZE = 5;
+    unsigned char target[] = {
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE
+    };
+
+    for (int i = 0; i < 20; i++) {
         std::cout << std::hex << (int) data[i] << std::endl;
     }
 

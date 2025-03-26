@@ -86,14 +86,21 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
     }
 
     if (last_free_block.obj != 0) {
+        std::cout << "Freeing " << bytes << " bytes in the last free block (or around) at offset " << last_free_block.obj << std::endl;
         // Merge with last_free_block is adjacent.
         const bool lsb_is_before = last_free_block.obj + last_free_block.size == obj;
         const bool lsb_is_after = obj + bytes == last_free_block.obj;
 
         if (lsb_is_before || lsb_is_after) {
-            last_free_block.obj += bytes;
+            last_free_block.size += bytes;
 
-            if (lsb_is_after) last_free_block.obj = obj;
+            if (lsb_is_after) {
+                last_free_block.obj = obj;
+                std::cout << "Merging up last free block with the newly freed block!" << std::endl;
+            }
+            else {
+                std::cout << "Merging down last free block with the newly freed block!" << std::endl;
+            }
 
             return;
         }
