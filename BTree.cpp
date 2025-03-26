@@ -17,14 +17,19 @@ Node<T>::Node(int t, bool is_leaf) {
     }
 }
 
+// Helper function to find the index of the first key greater than or equal to key
+template <Comparable T>
+int findKeyIndex(T key, auto &keys) {
+    int idx = 0;
+    while (idx < keys.size() && keys[idx] < key) {
+        ++idx;
+    }
+    return idx;
+}
+
 template <Comparable T>
 Node<T> *Node<T>::search(T key) {
-    // Check if the current node contains the key
-    int i = 0;
-    while (i < keys.size() && key > keys[i]) {
-        i++;
-    }
-
+    int i = findKeyIndex(key, keys);
     return i < keys.size() && key == keys[i] ? this // If the key is found in the current node
        : is_leaf ? nullptr // Nothing further to search
        : children[i]->search(key); // Look further in the child node
@@ -106,8 +111,13 @@ BTree<T>::BTree(int t) {
 }
 
 template <Comparable T>
+Node<T> *BTree<T>::search(T key) {
+    return root == nullptr ? nullptr : root->search(key);
+}
+
+template <Comparable T>
 void BTree<T>::insert(T key) {
-    Node<T> *r = root; // Start at the root
+    auto r = root; // Start at the root
     // If the root is full, split it
     if (r->keys.size() == 2*t - 1) {
         // Create a new root
@@ -123,6 +133,231 @@ void BTree<T>::insert(T key) {
 }
 
 template <Comparable T>
-Node<T> *BTree<T>::search(T key) {
-    return root == nullptr ? nullptr : root->search(key);
+T findPredecessor(Node<T> *node) {
+    auto k_prime = node;
+    while (!k_prime->is_leaf) {
+        k_prime = k_prime->children[k_prime->keys.size()];
+    }
+    return k_prime->keys[k_prime->keys.size() - 1];
+}
+
+template <Comparable T>
+T findSuccessor(Node<T> *node) {
+    auto k_prime = node;
+    while (!k_prime->is_leaf) {
+        k_prime = k_prime->children[0];
+    }
+    return k_prime->keys[0];
+}
+
+template <Comparable T>
+void mergeNodes(Node<T> *y, T k, Node<T> *z) {
+    y->keys.push_back(k);
+    y->keys.insert(y->keys.end(), z->keys.begin(), z->keys.end());
+    if (!y->is_leaf) {
+        y->children.insert(y->children.end(), z->children.begin(), z->children.end());
+    }
+}
+
+template <Comparable T>
+void moveKeyAndChildFromSibling(Node<T> *x, int i, bool isLeftSibling) {
+    Node<T> *child = x->children[i];
+    Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
+
+    if (isLeftSibling) {
+        // Shift all keys in the child node to the right
+        for (int j = child->keys.size() - 1; j >= 0; --j) {
+            child->keys[j+1] = child->keys[j];
+        }
+        if (!child->is_leaf) {
+            // Shift all children in the child node to the right
+            for (int j = child->children.size() - 1; j >= 0; --j) {
+                child->children[j+1] = child->children[j];
+            }
+        }
+
+        // Move the key from the current node down into the child node
+        child->keys[0] = x->keys[i-1];
+        if (!child->is_leaf) {
+            // Move the child pointer from the left sibling up into the current node
+            child->children[0] = sibling->children[sibling->children.size() - 1];
+        }
+
+        // Move the key from the left sibling up into the current node
+        x->keys[i-1] = sibling->keys[sibling->keys.size() - 1];
+
+        // Remove the key and child pointer from the left sibling
+        sibling->keys.resize(sibling->keys.size() - 1);
+        if (!sibling->is_leaf) {
+            sibling->children.resize(sibling->children.size() - 1);
+        }
+    } else {
+        // Move the key from the current node down into the child node
+        child->keys[child->keys.size()] = x->keys[i];
+        if (!child->is_leaf) {
+            // Move the child pointer from the right sibling up into the current node
+            child->children[child->children.size()] = sibling->children[0];
+        }
+
+        // Move the key from the right sibling up into the current node
+        x->keys[i] = sibling->keys[0];
+
+        // Shift all keys in the right sibling to the left
+        for (int j = 1; j < sibling->keys.size(); ++j) {
+            sibling->keys[j-1] = sibling->keys[j];
+        }
+        if (!sibling->is_leaf) {
+            // Shift all children in the right sibling to the left
+            for (int j = 1; j < sibling->children.size(); ++j) {
+                sibling->children[j-1] = sibling->children[j];
+            }
+        }
+
+        // Remove the key and child pointer from the right sibling
+        sibling->keys.resize(sibling->keys.size() - 1);
+        if (!sibling->is_leaf) {
+            sibling->children.resize(sibling->children.size() - 1);
+        }
+    }
+
+    // Update the size of the child node
+    child->keys.resize(child->keys.size() + 1);
+    if (!child->is_leaf) {
+        child->children.resize(child->children.size() + 1);
+    }
+}
+
+template <Comparable T>
+void mergeChildWithSibling(Node<T> *x, int i, bool isLeftSibling) {
+    Node<T> *child = x->children[i];
+    Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
+
+    if (isLeftSibling) {
+        // Move the key from the current node down into the child node
+        for (int j = child->keys.size() - 1; j >= 0; --j) {
+            child->keys[j+1] = child->keys[j];
+        }
+        child->keys[0] = x->keys[i-1];
+
+        // Move all keys from the left sibling into the child node
+        for (int j = sibling->keys.size() - 1; j >= 0; --j) {
+            child->keys[j+1] = sibling->keys[j];
+        }
+        if (!child->is_leaf) {
+            // Move all children from the left sibling into the child node
+            for (int j = sibling->children.size() - 1; j >= 0; --j) {
+                child->children[j+1] = sibling->children[j];
+            }
+        }
+
+        // Remove the key and child pointer from the current node
+        for (int j = i; j < x->keys.size(); ++j) {
+            x->keys[j-1] = x->keys[j];
+        }
+        for (int j = i + 1; j < x->children.size(); ++j) {
+            x->children[j-1] = x->children[j];
+        }
+
+        // Delete the left sibling
+        delete sibling;
+    } else {
+        // Move the key from the current node down into the child node
+        child->keys[child->keys.size()] = x->keys[i];
+
+        // Move all keys from the right sibling into the child node
+        for (int j = 0; j < sibling->keys.size(); ++j) {
+            child->keys[child->keys.size() + 1 + j] = sibling->keys[j];
+        }
+        if (!child->is_leaf) {
+            // Move all children from the right sibling into the child node
+            for (int j = 0; j < sibling->children.size(); ++j) {
+                child->children[child->children.size() + 1 + j] = sibling->children[j];
+            }
+        }
+
+        // Remove the key and child pointer from the current node
+        for (int j = i + 1; j < x->keys.size(); ++j) {
+            x->keys[j-1] = x->keys[j];
+        }
+        for (int j = i + 2; j < x->children.size(); ++j) {
+            x->children[j-1] = x->children[j];
+        }
+
+        // Delete the right sibling
+        delete sibling;
+    }
+
+    // Update the size of the current node
+    x->keys.resize(x->keys.size() - 1);
+    x->children.resize(x->children.size() - 1);
+
+    // Update the size of the child node
+    child->keys.resize(child->keys.size() + sibling->keys.size() + 1);
+    if (!child->is_leaf) {
+        child->children.resize(child->children.size() + sibling->children.size() + 1);
+    }
+}
+
+template <Comparable T>
+void BTree<T>::remove(T key) {
+    int i = findKeyIndex(key, root->keys);
+
+    auto k = root->keys[i];
+    auto x = root;
+    auto y = root->children[i];
+    auto z = root->children[i+1];
+
+    // Check if key is in the current node
+    if (i < x->keys.size() && key == k) {
+        if (x->is_leaf) {
+            x->keys.erase(x->keys.begin() + i);
+        } else {
+            if (y->keys.size() >= t) {
+                T predecessor = findPredecessor(y);
+                x->remove(predecessor);
+                k = predecessor;
+            } else if (y->keys.size() < t) {
+                if (z->keys.size() >= t) {
+                    T successor = findSuccessor(z);
+                    x->remove(successor);
+                    k = successor;
+                } else {
+                    mergeNodes(y, k, z); // Merge y, k, and z into y
+                    x->keys.erase(x->keys.begin() + i);
+                    x->children.erase(x->children.begin() + i + 1);
+                    delete z;
+                    y->remove(key);
+                }
+            }
+        }
+    // The key is not in the current node, search in the node closest to the key
+    } else {
+        // If the key exists, it must be in the subtree rooted at the last child
+        bool isLastChild = i == x->keys.size();
+
+        // Check if child has minimum allowed (t-1) keys
+        if (x->children[i]->keys.size() < t) {
+            // Check if child node has an immediate sibling with at least t keys
+            if (i != 0 && x->children[i-1]->keys.size() >= t) { // Left
+                moveKeyAndChildFromSibling(x, i, true);
+            } else if (i != x->keys.size() && x->children[i+1]->keys.size() >= t) { // Right
+                moveKeyAndChildFromSibling(x, i, false);
+            // If child node and both immediate siblings have t-1 keys
+            } else {
+                // Merge child node with one sibling
+                if (i != x->keys.size()) {
+                    mergeChildWithSibling(x, i, false);
+                } else {
+                    mergeChildWithSibling(x, i, true);
+                }
+            }
+        }
+
+        // Recurse on the appropriate child of the current node
+        if (isLastChild && i > x->keys.size()) {
+            x->children[i-1]->remove(key);
+        } else {
+            x->children[i]->remove(key);
+        }
+    }
 }
