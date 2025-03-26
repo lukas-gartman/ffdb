@@ -31,6 +31,43 @@ Node<T> *Node<T>::search(T key) {
 }
 
 template <Comparable T>
+void Node<T>::insertNonFull(T key) {
+    int i = keys.size() - 1;
+    if (is_leaf) { // If the current node is a leaf, insert the key
+        // Find the key that is less than the key to be inserted
+        while (i >= 0 && key < keys[i]) {
+            keys[i+1] = keys[i]; // Shift the key to the right
+            --i;
+        }
+
+        keys[i+1] = key; // Insert the key next to the key that is less than it
+    } else { // Insert the key into the appropriate child node
+        // Find the child node that the key should be inserted into
+        while (i >= 0 && key < keys[i]) {
+            --i;
+        }
+
+        ++i; // Increment i to get the child node index
+
+        // Check if the child node is full
+        if (children[i]->keys.size() == 2*t - 1) {
+            splitChild(i, children[i]);
+            // Determine which of the two children to insert the key into
+            if (key > keys[i]) {
+                ++i;
+            }
+        }
+
+        children[i]->insertNonFull(key);
+    }
+}
+
+template <Comparable T>
+void Node<T>::splitChild(int i, Node *y) {
+
+}
+
+template <Comparable T>
 BTree<T>::BTree(int t) {
     this->t =  t;
     root = new Node<T>(t, true);
