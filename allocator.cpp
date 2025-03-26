@@ -14,26 +14,40 @@ Allocator::Allocator(State* state, std::size_t memory_map_size):
     last_free_block({0, 0}) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
+    std::cout << "-- Allocator::malloc_internal --" << std::endl;
     Object obj;
 
     // Try using the last free block.
     if (last_free_block.obj != 0 &&
         last_free_block.size >= bytes) {
+        std::cout << "Allocating" << bytes << " in the last free block at offset " << last_free_block.obj << std::endl;
 
         obj = last_free_block.obj;
         last_free_block.obj += bytes;
         last_free_block.size -= bytes;
 
-        if (last_free_block.size == 0)
+        if (last_free_block.size == 0) {
+            std::cout << "No space left in last free block!" << std::endl;
             last_free_block.obj = 0;
-
+        }
+        else {
+            std::cout << last_free_block.size << " bytes left in last free block!" << std::endl;
+        }
+        std::cout << std::endl;
         return obj;
-    }
+        }
 
     // Try finding a fitting block in the block descriptor list.
+    std::cout << "Checking block descriptors!" << std::endl;
     obj = delete_block_descriptor(bytes);
-    if (obj != 0)
+    if (obj != 0) {
+        std::cout << "Allocating" << bytes << " at " << obj << " which we got from block descriptor." << std::endl;
+        std::cout << std::endl;
         return obj;
+    }
+    else {
+        std::cout << "No block descriptor found!" << std::endl;
+    }
 
     // The above failed. Get memory from the top.
     std::size_t free_size = memory_map_size - local_top;
@@ -43,25 +57,31 @@ Object Allocator::malloc_internal(std::size_t bytes) {
 
     obj = local_top;
     local_top += bytes;
+    std::cout << "Allocating " << bytes << " bytes at top (" << obj << ")" << std::endl;
+    std::cout << std::endl;
     return obj;
 }
 
 void Allocator::free_internal(Object obj, std::size_t bytes) {
+    std::cout << "-- Allocator::free_internal --" << std::endl;
     if (obj == 0) return;
 
     // TODO: When implementing transactions the below can't happen
     // TODO: when in the same transaction.
-    if (obj + bytes > local_top) {
+    if (obj + bytes == local_top) {
+        std::cout << "Freeing " << bytes << " bytes at top (" << obj << ")" << std::endl;
         local_top -= bytes;
 
         if (last_free_block.obj != 0 &&
             last_free_block.obj + last_free_block.size == local_top) {
 
+            std::cout << "Merging last free block with top!" << std::endl;
             local_top -= last_free_block.size;
             last_free_block.obj = 0;
             last_free_block.size = 0;
         }
 
+        std::cout << std::endl;
         return;
     }
 
@@ -81,6 +101,7 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
         // Otherwise, it will get replaced.
         insert_block_descriptor(last_free_block.obj, last_free_block.size);
     }
+
 
     last_free_block.obj = obj;
     last_free_block.size = bytes;
