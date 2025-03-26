@@ -25,7 +25,7 @@ Node<T> *Node<T>::search(T key) {
         i++;
     }
 
-    return i <= keys.size() && key == keys[i] ? this // If the key is found in the current node
+    return i < keys.size() && key == keys[i] ? this // If the key is found in the current node
        : is_leaf ? nullptr // Nothing further to search
        : children[i]->search(key); // Look further in the child node
 }
