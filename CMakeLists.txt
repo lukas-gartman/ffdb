@@ -26,6 +26,8 @@ add_executable(ffdb main.cpp
         buddy_allocator.h
         typedefs.cpp
         typedefs.h
+        BTree.cpp
+        BTree.h
         # Allocator.cpp
         # Allocator.h
 )
