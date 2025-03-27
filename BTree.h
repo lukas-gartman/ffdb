@@ -35,6 +35,15 @@ public:
     Node *search(T key);
     void insertNonFull(T key);
     void splitChild(int i, Node *y);
+    void remove(T key);
+
+    // Helper functions
+    int findKeyIndex(T key);
+    T findPredecessor(Node *node);
+    T findSuccessor(Node *node);
+    void mergeNodes(Node *y, T k, Node *z);
+    void moveKeyAndChildFromSibling(Node *x, int i, bool isLeftSibling);
+    void mergeChildWithSibling(Node *x, int i, bool isLeftSibling);
 
     friend class BTree<T>;
 };
@@ -70,7 +79,7 @@ Node<T>::Node(int t, bool is_leaf) {
 
 // Helper function to find the index of the first key greater than or equal to key
 template <Comparable T>
-int findKeyIndex(T key, auto &keys) {
+int Node<T>::findKeyIndex(T key) {
     int idx = 0;
     while (idx < keys.size() && keys[idx] < key) {
         ++idx;
@@ -80,7 +89,7 @@ int findKeyIndex(T key, auto &keys) {
 
 template <Comparable T>
 Node<T> *Node<T>::search(T key) {
-    int i = findKeyIndex(key, keys);
+    int i = findKeyIndex(key);
     return i < keys.size() && key == keys[i] ? this // If the key is found in the current node
        : is_leaf ? nullptr // Nothing further to search
        : children[i]->search(key); // Look further in the child node
@@ -156,35 +165,7 @@ void Node<T>::splitChild(int i, Node *y) {
 }
 
 template <Comparable T>
-BTree<T>::BTree(int t) {
-    this->t =  t;
-    root = new Node<T>(t, true);
-}
-
-template <Comparable T>
-Node<T> *BTree<T>::search(T key) {
-    return root == nullptr ? nullptr : root->search(key);
-}
-
-template <Comparable T>
-void BTree<T>::insert(T key) {
-    auto r = root; // Start at the root
-    // If the root is full, split it
-    if (r->keys.size() == 2*t - 1) {
-        // Create a new root
-        auto *s = new Node<T>(t, false);
-        root = s;
-
-        s->children[0] = r; // Make the old root the child of the new root
-        s->splitChild(0, r); // Split the old root to ensure it is no longer full
-        s->insertNonFull(key);
-    } else {
-        r->insertNonFull(key);
-    }
-}
-
-template <Comparable T>
-T findPredecessor(Node<T> *node) {
+T Node<T>::findPredecessor(Node<T> *node) {
     auto k_prime = node;
     while (!k_prime->is_leaf) {
         k_prime = k_prime->children[k_prime->keys.size()];
@@ -193,7 +174,7 @@ T findPredecessor(Node<T> *node) {
 }
 
 template <Comparable T>
-T findSuccessor(Node<T> *node) {
+T Node<T>::findSuccessor(Node<T> *node) {
     auto k_prime = node;
     while (!k_prime->is_leaf) {
         k_prime = k_prime->children[0];
@@ -202,7 +183,7 @@ T findSuccessor(Node<T> *node) {
 }
 
 template <Comparable T>
-void mergeNodes(Node<T> *y, T k, Node<T> *z) {
+void Node<T>::mergeNodes(Node<T> *y, T k, Node<T> *z) {
     y->keys.push_back(k);
     y->keys.insert(y->keys.end(), z->keys.begin(), z->keys.end());
     if (!y->is_leaf) {
@@ -211,7 +192,7 @@ void mergeNodes(Node<T> *y, T k, Node<T> *z) {
 }
 
 template <Comparable T>
-void moveKeyAndChildFromSibling(Node<T> *x, int i, bool isLeftSibling) {
+void Node<T>::moveKeyAndChildFromSibling(Node<T> *x, int i, bool isLeftSibling) {
     Node<T> *child = x->children[i];
     Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
 
@@ -279,7 +260,7 @@ void moveKeyAndChildFromSibling(Node<T> *x, int i, bool isLeftSibling) {
 }
 
 template <Comparable T>
-void mergeChildWithSibling(Node<T> *x, int i, bool isLeftSibling) {
+void Node<T>::mergeChildWithSibling(Node<T> *x, int i, bool isLeftSibling) {
     Node<T> *child = x->children[i];
     Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
 
@@ -350,13 +331,13 @@ void mergeChildWithSibling(Node<T> *x, int i, bool isLeftSibling) {
 }
 
 template <Comparable T>
-void BTree<T>::remove(T key) {
-    int i = findKeyIndex(key, root->keys);
+void Node<T>::remove(T key) {
+    int i = findKeyIndex(key);
 
-    auto k = root->keys[i];
-    auto x = root;
-    auto y = root->children[i];
-    auto z = root->children[i+1];
+    auto k = keys[i];
+    auto x = this;
+    auto y = children[i];
+    auto z = children[i+1];
 
     // Check if key is in the current node
     if (i < x->keys.size() && key == k) {
@@ -413,5 +394,38 @@ void BTree<T>::remove(T key) {
     }
 }
 
+template <Comparable T>
+BTree<T>::BTree(int t) {
+    this->t =  t;
+    root = new Node<T>(t, true);
+}
+
+template <Comparable T>
+Node<T> *BTree<T>::search(T key) {
+    return root == nullptr ? nullptr : root->search(key);
+}
+
+template <Comparable T>
+void BTree<T>::insert(T key) {
+    auto r = root; // Start at the root
+    // If the root is full, split it
+    if (r->keys.size() == 2*t - 1) {
+        // Create a new root
+        auto *s = new Node<T>(t, false);
+        root = s;
+
+        s->children[0] = r; // Make the old root the child of the new root
+        s->splitChild(0, r); // Split the old root to ensure it is no longer full
+        s->insertNonFull(key);
+    } else {
+        r->insertNonFull(key);
+    }
+}
+
+template <Comparable T>
+void BTree<T>::remove(T key) {
+    if (!root) { return; }
+    root->remove(key);
+}
 
 #endif //BTREE_H
