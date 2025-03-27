@@ -25,7 +25,7 @@ template <Comparable T>
 class Node {
 private:
     std::vector<T> keys;
-    std::vector<Node> *children;
+    std::vector<Node*> children;
     int t; // Minimum degree, the lower bound
     bool is_leaf;
 
