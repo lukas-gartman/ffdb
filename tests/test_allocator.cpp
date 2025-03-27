@@ -58,9 +58,7 @@ TEST(AllocatorTest, MallocTestSeq) {
         0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xEE
     };
 
-    for (int i = 0; i < TARGET_SIZE; i++) {
-        ASSERT_EQ(data[i], target[i]);
-    }
+    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
 }
 
 /* FreeTestSeq
@@ -84,37 +82,31 @@ TEST(AllocatorTest, FreeTestSeq) {
     Allocator alloc(alloc_state,
         mm_state.memory_map_size - sizeof(Allocator::State));
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
+    Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
+    Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
 
     *d1 = 0xFF;
-    *d2 = 0xEE;
-    *d3 = 0xDD;
+    *d2 = 0xEEEEEEEE;
+    *d3 = 0xDDDD;
 
-    alloc.free<uint8_t>(d3);
-    alloc.free<uint8_t>(d2);
+    alloc.free<uint16_t>(d3);
+    alloc.free<uint32_t>(d2);
     alloc.free<uint8_t>(d1);
 
     Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d6 = alloc.malloc<uint8_t>();
+    Ref<uint32_t> d5 = alloc.malloc<uint32_t>();
+    Ref<uint16_t> d6 = alloc.malloc<uint16_t>();
 
     *d4 = 0xAA;
-    *d5 = 0xBB;
-    *d6 = 0xCC;
+    *d5 = 0xBBBBBBBB;
+    *d6 = 0xCCCC;
 
-    const size_t TARGET_SIZE = 3;
+    const size_t TARGET_SIZE = 7;
     unsigned char target[] = {
-        0xAA, 0xBB, 0xCC
+        0xAA, 0xBB, 0xBB, 0xBB, 0xBB, 0xCC, 0xCC
     };
 
-    for (int i = 0; i < TARGET_SIZE; i++) {
-        std::cout << std::hex << (int) data[i] << std::endl;
-    }
-
-    for (int i = 0; i < TARGET_SIZE; i++) {
-        ASSERT_EQ(data[i], target[i]);
-    }
+    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
 }
 
 TEST(AllocatorTest, FreeTestMerge) {
@@ -158,11 +150,6 @@ TEST(AllocatorTest, FreeTestMerge) {
         0xAA, 0xBB, 0xCC, 0xDD, 0xEE
     };
 
-    for (int i = 0; i < 20; i++) {
-        std::cout << std::hex << (int) data[i] << std::endl;
-    }
 
-    for (int i = 0; i < TARGET_SIZE; i++) {
-        ASSERT_EQ(data[i], target[i]);
-    }
+    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
 }
