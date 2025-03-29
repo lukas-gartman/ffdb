@@ -168,12 +168,19 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     best_fit->next = unused_block_descriptor_list;
     unused_block_descriptor_list = best_fit;
 
+    Block block_left = best_fit->block;
+
+    best_fit->block.obj = 0;
+    best_fit->block.size = 0;
+
     // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
-    if (best_fit->block.size != 0) {
-        insert_block_descriptor(last_free_block.obj, last_free_block.size);
-        last_free_block.obj = best_fit->block.obj;
-        last_free_block.size = best_fit->block.size;
+    if (block_left.size != 0) {
+        if (last_free_block.obj != 0) {
+            insert_block_descriptor(last_free_block.obj, last_free_block.size);
+        }
+        last_free_block.obj = block_left.obj;
+        last_free_block.size = block_left.size;
     }
 
     return offset;

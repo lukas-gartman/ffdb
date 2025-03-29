@@ -242,7 +242,66 @@ TEST(AllocatorTest, FreeTestOverwrite) {
 
     MockBlockDescriptor mbd_target = {1, 1, 0};
 
-    // Block descriptor now points at itself which is wrong
+    auto mbd = *((MockBlockDescriptor *) &data[TARGET_SIZE]);
+    ASSERT_EQ(mbd.mbd1, mbd_target.mbd1);
+    ASSERT_EQ(mbd.mbd2, mbd_target.mbd2);
+    ASSERT_EQ(mbd.mbd3, mbd_target.mbd3);
+}
+
+TEST(AllocatorTest, FreeTestOverwriteHalfBD) {
+    MemoryMapState mm_state(1024);
+
+    current_base = (unsigned char *) mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *) current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
+
+    Allocator alloc(alloc_state,
+        mm_state.memory_map_size - sizeof(Allocator::State));
+
+    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
+    Ref<uint16_t> d2 = alloc.malloc<uint16_t>();
+    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
+
+    *d1 = 0xAA;
+    *d2 = 0xFFFF;
+    *d3 = 0xDD;
+    *d4 = 0xFF;
+    *d5 = 0xFF;
+
+    // Last free block is now d2, 16 bytes
+    alloc.free<uint16_t>(d2);
+
+    // Last free block is now d4, 8 byte. Insert BD for d2.
+    alloc.free<uint8_t>(d4);
+
+    // Allocate 8 bytes in last free block
+    Ref<uint8_t> d6 = alloc.malloc<uint8_t>();
+
+    //
+    Ref<uint8_t> d7 = alloc.malloc<uint8_t>();
+    Ref<uint8_t> d8 = alloc.malloc<uint8_t>(); // Only bd should be unused
+
+    *d6 = 0xEE;
+    *d7 = 0xBB;
+    *d8 = 0xCC;
+
+    const size_t TARGET_SIZE = 6;
+    unsigned char target[] = {
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
+    };
+
+    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
+
+    MockBlockDescriptor mbd_target = {0, 0, 0};
 
     auto mbd = *((MockBlockDescriptor *) &data[TARGET_SIZE]);
     ASSERT_EQ(mbd.mbd1, mbd_target.mbd1);
