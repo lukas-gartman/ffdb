@@ -238,8 +238,6 @@ TEST(AllocatorTest, FreeTestOverwrite) {
         0xAA, 0xBB, 0xCC, 0xDD
     };
 
-    for (int i = 0; i < 40; i++) std::cout << std::hex << (unsigned int) data[i] << std::endl;
-
     for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
 
     MockBlockDescriptor mbd_target = {1, 1, 0};
@@ -250,5 +248,4 @@ TEST(AllocatorTest, FreeTestOverwrite) {
     ASSERT_EQ(mbd.mbd1, mbd_target.mbd1);
     ASSERT_EQ(mbd.mbd2, mbd_target.mbd2);
     ASSERT_EQ(mbd.mbd3, mbd_target.mbd3);
-
 }
