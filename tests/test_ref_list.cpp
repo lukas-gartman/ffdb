@@ -40,8 +40,6 @@ TEST(RefListTest, PopPushTest) {
     auto *list = (RefList<int> *) current_base;
     current_base += sizeof(RefList<int>);
 
-    unsigned char *data = (Ref<unsigned char>) 1;
-
     // Allocate nodes
     Object node_offsets[3];
 
@@ -65,12 +63,9 @@ TEST(RefListTest, IteratorTest) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *list = (RefList<int> *) current_base;
+    auto *list = new (current_base) RefList<int>();
     current_base += sizeof(RefList<int>);
 
-    unsigned char *data = (Ref<unsigned char>) 1;
-
-    // Allocate nodes
     constexpr size_t NODE_COUNT = 10;
     Object node_offsets[NODE_COUNT];
 
