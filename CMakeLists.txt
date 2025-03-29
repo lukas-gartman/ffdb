@@ -14,10 +14,13 @@ else()
             tests/test_main.cpp
             tests/test_example.cpp
             tests/test_allocator.cpp
+            tests/test_ref_list.cpp
             typedefs.cpp
             typedefs.h
             allocator.cpp
             allocator.h
+            ref_list.cpp
+            ref_list.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -31,4 +34,6 @@ add_executable(ffdb main.cpp
         typedefs.h
         allocator.cpp
         allocator.h
+        ref_list.cpp
+        ref_list.h
 )

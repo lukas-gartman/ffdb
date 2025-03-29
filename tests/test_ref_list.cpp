@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <cstdint>
-#include "../allocator.h" // Should include typedefs.h
+#include "../ref_list.h"
 
 static const std::size_t PAGE_SIZE = 4096;
 
@@ -26,229 +26,85 @@ struct MockBlockDescriptor {
     Ref<MockBlockDescriptor> mbd3;
 };
 
+using Node = RefList<int>::Node;
+
 /* MallocTestSeq
  * Tests if Allocator::malloc allocates data sequentially when no "holes" are
  * present in memory.
  */
-TEST(AllocatorTest, MallocTestSeq) {
+TEST(RefListTest, PopPushTest) {
     MemoryMapState mm_state(1024);
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
+    auto *list = (RefList<int> *) current_base;
+    current_base += sizeof(RefList<int>);
 
-    current_base += sizeof(Allocator::State);
-    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
+    unsigned char *data = (Ref<unsigned char>) 1;
 
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
-    Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
-    Ref<uint64_t> d4 = alloc.malloc<uint64_t>();
-    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
+    // Allocate nodes
+    Object node_offsets[3];
 
-    *d1 = 0xAA;
-    *d2 = 0xBBBBBBBB;
-    *d3 = 0xCCCC;
-    *d4 = 0xDDDDDDDDDDDDDDDD;
-    *d5 = 0xEE;
+    for (int i = 0; i < 3; i++)
+        node_offsets[i] = i * sizeof(Node) + 1;
 
-    const std::size_t TARGET_SIZE = 16;
-    unsigned char target[] = {
-        0xAA, 0xBB, 0xBB, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD,
-        0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xEE
-    };
+    for (int i = 0; i < 3; i++)
+        ((Ref<Node>) node_offsets[i])->val = i + 1;
 
-    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
+    list->push(node_offsets[2]);
+    list->push(node_offsets[1]);
+    list->push(node_offsets[0]);
+
+    for (const auto node_offset : node_offsets) {
+        ASSERT_EQ(((Ref<Node>) node_offset)->val, list->pop()->val);
+    }
 }
 
-/* FreeTestSeq
- * Tests if Allocator::free successfully frees memory from the top when no
- * "holes" are present in memory.
- */
-TEST(AllocatorTest, FreeTestSeq) {
+TEST(RefListTest, IteratorTest) {
     MemoryMapState mm_state(1024);
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
+    auto *list = (RefList<int> *) current_base;
+    current_base += sizeof(RefList<int>);
 
-    current_base += sizeof(Allocator::State);
-    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
+    unsigned char *data = (Ref<unsigned char>) 1;
 
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
-    Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
+    // Allocate nodes
+    constexpr size_t NODE_COUNT = 10;
+    Object node_offsets[NODE_COUNT];
 
-    *d1 = 0xFF;
-    *d2 = 0xEEEEEEEE;
-    *d3 = 0xDDDD;
+    for (int i = 0; i < NODE_COUNT; i++) {
+        node_offsets[i] = i * sizeof(Node) + 1;
+        auto node = (Ref<Node>) node_offsets[i];
+        node->val = i + 1;
+        node->next = 0; // Initialize next pointer to null
+    }
 
-    alloc.free<uint16_t>(d3);
-    alloc.free<uint32_t>(d2);
-    alloc.free<uint8_t>(d1);
-
-    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
-    Ref<uint32_t> d5 = alloc.malloc<uint32_t>();
-    Ref<uint16_t> d6 = alloc.malloc<uint16_t>();
-
-    *d4 = 0xAA;
-    *d5 = 0xBBBBBBBB;
-    *d6 = 0xCCCC;
-
-    const size_t TARGET_SIZE = 7;
-    unsigned char target[] = {
-        0xAA, 0xBB, 0xBB, 0xBB, 0xBB, 0xCC, 0xCC
+    Node target_nodes[] = {
+        {1, node_offsets[2]},
+        {2, 0},
+        {3, node_offsets[4]},
+        {4, 0},
+        {5, node_offsets[6]},
+        {6, 0},
+        {7, node_offsets[8]},
+        {8, 0},
+        {9, 0},
+        {10, 0}
     };
 
-    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
-}
+    for (int i = NODE_COUNT - 1; i >= 0; i--)
+        list->push(node_offsets[i]);
 
-TEST(AllocatorTest, FreeTestMerge) {
-    MemoryMapState mm_state(1024);
+    auto it = list->get_iterator();
+    while (it.get() != 0) {
+        if (it.get()->val % 2 == 0) it.remove();
+        else it.next();
+    }
 
-    current_base = (unsigned char *) mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
-
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d5 = alloc.malloc<uint8_t>();
-
-    *d1 = 0xFF;
-    *d2 = 0xFF;
-    *d3 = 0xFF;
-    *d4 = 0xFF;
-    *d5 = 0xEE;
-
-    alloc.free<uint8_t>(d2);
-    alloc.free<uint8_t>(d1);
-    alloc.free<uint8_t>(d3);
-    alloc.free<uint8_t>(d4);
-
-    Ref<uint32_t> d6 = alloc.malloc<uint32_t>();
-    *d6 = 0xDDCCBBAA;
-
-    const size_t TARGET_SIZE = 5;
-    unsigned char target[] = {
-        0xAA, 0xBB, 0xCC, 0xDD, 0xEE
-    };
-
-
-    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
-}
-
-TEST(AllocatorTest, BlockDescriptorTestNewTop) {
-    MemoryMapState mm_state(1024);
-
-    current_base = (unsigned char *) mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
-
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-
-    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    alloc.malloc<uint8_t>();
-    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
-    alloc.malloc<uint8_t>();
-
-    alloc.free<uint8_t>(d3);
-    alloc.free<uint8_t>(d1);
-
-    MockBlockDescriptor mbd_target = {3, 1, 0};
-    const std::size_t TARGET_MDB_INDEX = 4;
-
-    auto mbd = *((MockBlockDescriptor *) &data[TARGET_MDB_INDEX]);
-    ASSERT_EQ(mbd.mbd1, mbd_target.mbd1);
-    ASSERT_EQ(mbd.mbd2, mbd_target.mbd2);
-    ASSERT_EQ(mbd.mbd3, mbd_target.mbd3);
-}
-
-TEST(AllocatorTest, FreeTestOverwrite) {
-    MemoryMapState mm_state(1024);
-
-    current_base = (unsigned char *) mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-    unsigned char *data = (Ref<unsigned char>) alloc_state->top;
-
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-
-    Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
-    Ref<uint8_t> d4 = alloc.malloc<uint8_t>();
-
-    *d1 = 0xFF;
-    *d2 = 0xBB;
-    *d3 = 0xFF;
-    *d4 = 0xDD;
-
-    alloc.free<uint8_t>(d3);
-    alloc.free<uint8_t>(d1);
-
-    Ref<uint8_t> d5 = alloc.malloc<uint8_t>(); // Overwrite last free block
-    Ref<uint8_t> d6 = alloc.malloc<uint8_t>(); // Should empty block descriptor
-
-    *d5 = 0xAA;
-    *d6 = 0xCC;
-
-    alloc.free<uint8_t>(d5);
-    alloc.free<uint8_t>(d6);
-
-    const size_t TARGET_SIZE = 4;
-    unsigned char target[] = {
-        0xAA, 0xBB, 0xCC, 0xDD
-    };
-
-    for (int i = 0; i < 40; i++) std::cout << std::hex << (unsigned int) data[i] << std::endl;
-
-    for (int i = 0; i < TARGET_SIZE; i++) ASSERT_EQ(data[i], target[i]);
-
-    MockBlockDescriptor mbd_target = {1, 1, 0};
-
-    // Block descriptor now points at itself which is wrong
-
-    auto mbd = *((MockBlockDescriptor *) &data[TARGET_SIZE]);
-    ASSERT_EQ(mbd.mbd1, mbd_target.mbd1);
-    ASSERT_EQ(mbd.mbd2, mbd_target.mbd2);
-    ASSERT_EQ(mbd.mbd3, mbd_target.mbd3);
-
+    for (int i = 0; i < NODE_COUNT; i++) {
+        ASSERT_EQ(((Ref<Node>) node_offsets[i])->val, target_nodes[i].val);
+        ASSERT_EQ(((Ref<Node>) node_offsets[i])->next, target_nodes[i].next);
+    }
 }
