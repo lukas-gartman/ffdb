@@ -3,6 +3,8 @@
 
 #include "typedefs.h"
 
+#include <stdexcept>
+
 class Allocator {
 public:
     struct State {
@@ -29,12 +31,10 @@ private:
         std::size_t size;
     };
 
-    // TODO: Makes no sense to have a Block as a member as BlockDesctiptor
+    // TODO: Makes no sense to have a Block as a member as BlockDescriptor
     // TODO: points to a block and contains its size. It does not contain
     // TODO: the block itself.
     struct BlockDescriptor {
-        // TODO: Temp tag for identifying block descriptors in the memory map. Remove later.
-        char bd_tag;
         Block block;
         Ref<BlockDescriptor> next;
     };

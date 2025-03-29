@@ -14,7 +14,6 @@ Allocator::Allocator(State* state, std::size_t memory_map_size):
     last_free_block({0, 0}) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
-    std::cout << "-- Allocator::malloc_internal --" << std::endl;
     Object obj;
 
     // Try using the last free block.
@@ -43,12 +42,10 @@ Object Allocator::malloc_internal(std::size_t bytes) {
     obj = local_top;
     local_top += bytes;
 
-    std::cout << std::endl;
     return obj;
 }
 
 void Allocator::free_internal(Object obj, std::size_t bytes) {
-    std::cout << "-- Allocator::free_internal --" << std::endl;
     if (obj == 0) return;
 
     // TODO: When implementing transactions the below can't happen
@@ -59,7 +56,6 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
         if (last_free_block.obj != 0 &&
             last_free_block.obj + last_free_block.size == local_top) {
 
-            std::cout << "Merging last free block with top!" << std::endl;
             local_top -= last_free_block.size;
             last_free_block.obj = 0;
             last_free_block.size = 0;
@@ -88,8 +84,6 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
 
     last_free_block.obj = obj;
     last_free_block.size = bytes;
-
-    std::cout << std::endl;
 }
 
 Ref<Allocator::BlockDescriptor>
@@ -97,9 +91,9 @@ Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
     Ref<BlockDescriptor> block_descriptor = 0;
 
     if (unused_block_descriptor_list != 0) {
-        // Reuse the first unused block descriptor
         block_descriptor = unused_block_descriptor_list;
-        unused_block_descriptor_list = block_descriptor->next;
+        unused_block_descriptor_list =
+            unused_block_descriptor_list->next;
     }
     else {
         // Allocate a new block descriptor
@@ -123,9 +117,7 @@ void Allocator::insert_block_descriptor(Object obj, std::size_t block_size) {
     Ref<BlockDescriptor> new_list =
         new_block_descriptor(obj, block_size);
 
-    if (block_descriptor_list != 0)
-        new_list->next = block_descriptor_list;
-
+    new_list->next = block_descriptor_list;
     block_descriptor_list = new_list;
 }
 
@@ -141,11 +133,12 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     Ref<BlockDescriptor> current_descriptor = block_descriptor_list;
 
     // Find the best fitting block.
-    while (current_descriptor->next != 0) {
+    while (current_descriptor != 0) {
         const std::size_t descr_block_size = current_descriptor->block.size;
 
         if (block_size <= descr_block_size &&
             (best_fit == 0 || descr_block_size < best_fit->block.size)) {
+
             best_fit_prev = prev_descriptor;
             best_fit = current_descriptor;
 
@@ -158,10 +151,10 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     }
 
     // Found no fit at all.
-    if (best_fit == 0)
-        return 0;
+    if (best_fit == 0) return 0;
 
     Object offset = best_fit->block.obj;
+
     best_fit->block.obj += block_size;
     best_fit->block.size -= block_size;
 
@@ -169,6 +162,8 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     // block descriptor list and add it to the unused block descriptor list.
     if (best_fit_prev != 0)
         best_fit_prev->next = best_fit->next;
+    else
+        block_descriptor_list = best_fit->next;
 
     best_fit->next = unused_block_descriptor_list;
     unused_block_descriptor_list = best_fit;
