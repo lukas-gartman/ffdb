@@ -170,9 +170,6 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
 
     Block block_left = best_fit->block;
 
-    best_fit->block.obj = 0;
-    best_fit->block.size = 0;
-
     // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
     if (block_left.size != 0) {
