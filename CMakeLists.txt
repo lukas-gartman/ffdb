@@ -16,6 +16,7 @@ else()
             typedefs.cpp
             typedefs.h
             FixedArray.h
+            tests/test_fixed_array.cpp
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
