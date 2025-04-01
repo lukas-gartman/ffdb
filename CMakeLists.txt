@@ -15,6 +15,7 @@ else()
             tests/test_example.cpp
             typedefs.cpp
             typedefs.h
+            tests/test_btree.cpp
             FixedArray.h
             tests/test_fixed_array.cpp
     )
