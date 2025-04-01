@@ -1,8 +1,6 @@
 #include "allocator.h"
 
 #include <cassert>
-#include <iostream>
-#include <ostream>
 #include <stdexcept>
 
 Allocator::Allocator(State* state, std::size_t memory_map_size):
@@ -80,7 +78,6 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
         // Otherwise, it will get replaced.
         insert_block_descriptor(last_free_block.obj, last_free_block.size);
     }
-
 
     last_free_block.obj = obj;
     last_free_block.size = bytes;
