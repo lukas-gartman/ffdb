@@ -15,6 +15,7 @@ else()
             tests/test_example.cpp
             typedefs.cpp
             typedefs.h
+            FixedArray.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -27,6 +28,5 @@ add_executable(ffdb main.cpp
         typedefs.cpp
         typedefs.h
         BTree.h
-        # Allocator.cpp
-        # Allocator.h
+        FixedArray.h
 )
