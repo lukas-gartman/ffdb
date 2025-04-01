@@ -4,7 +4,7 @@
 #ifndef BTREE_H
 #define BTREE_H
 
-#include <vector>
+#include "FixedArray.h"
 #include <concepts>
 
 // Ensure the key type is comparable to other keys
@@ -19,13 +19,13 @@ concept Comparable = requires(T a, T b) {
 };
 
 template <Comparable T>
-class BTree; // Forward declaration
+class BTree;
 
 template <Comparable T>
 class Node {
 private:
-    std::vector<T> keys;
-    std::vector<Node*> children;
+    FixedArray<T> keys;
+    FixedArray<Node*> children;
     int t; // Minimum degree, the lower bound
     bool is_leaf;
 
@@ -71,9 +71,9 @@ Node<T>::Node(int t, bool is_leaf) {
     // CLRS B-tree properties:
     // 1. Every node has at most 2t-1 keys and at most 2t children
     // 2. Every node (except the root) has at least t-1 keys and at least t children
-    keys.reserve(2*t - 1); // preallocate space for keys' upper bound
+    this->keys = FixedArray<T>(2*t - 1);
     if (!is_leaf) {
-        children.reserve(2*t); // preallocate space for children's upper bound
+        this->children = FixedArray<Node<T>*>(2*t);
     }
 }
 
@@ -99,6 +99,7 @@ template <Comparable T>
 void Node<T>::insertNonFull(T key) {
     int i = keys.size() - 1;
     if (is_leaf) { // If the current node is a leaf, insert the key
+        keys.resize(keys.size() + 1); // Make space for the new key
         // Find the key that is less than the key to be inserted
         while (i >= 0 && key < keys[i]) {
             keys[i+1] = keys[i]; // Shift the key to the right
@@ -130,7 +131,7 @@ void Node<T>::insertNonFull(T key) {
 template <Comparable T>
 void Node<T>::splitChild(int i, Node *y) {
     Node *z = new Node(y->t, y->is_leaf);
-    z->keys.resize(t - 1); // // z will have t-1 keys
+    z->keys.resize(t - 1); // z will have t-1 keys
 
     // Copy the upper half of y's keys to z's lower half
     for (int j = 0; j < t - 1; ++j) {
@@ -143,6 +144,9 @@ void Node<T>::splitChild(int i, Node *y) {
             z->children[j] = y->children[j + t];
         }
     }
+
+    // Store the middle key of y which will be moved up to the parent
+    T middleKey = y->keys[t - 1];
 
     // Remove the upper half of y's keys that were copied to z
     y->keys.resize(t - 1);
@@ -159,7 +163,7 @@ void Node<T>::splitChild(int i, Node *y) {
         keys[j+1] = keys[j];
     }
     // Insert the middle key of y into the current node
-    keys[i] = y->keys[t - 1];
+    keys[i] = middleKey;
     // Increase the number of keys in the current node
     keys.resize(keys.size() + 1);
 }
@@ -184,10 +188,14 @@ T Node<T>::findSuccessor(Node<T> *node) {
 
 template <Comparable T>
 void Node<T>::mergeNodes(Node<T> *y, T k, Node<T> *z) {
-    y->keys.push_back(k);
-    y->keys.insert(y->keys.end(), z->keys.begin(), z->keys.end());
+    y->keys[y->keys.size()] = k;
+    for (size_t i = 0; i < z->keys.size(); ++i) {
+        y->keys[y->keys.size()] = z->keys[i];
+    }
     if (!y->is_leaf) {
-        y->children.insert(y->children.end(), z->children.begin(), z->children.end());
+        for (size_t i = 0; i < z->children.size(); ++i) {
+            y->children[y->children.size()] = z->children[i];
+        }
     }
 }
 
@@ -342,7 +350,7 @@ void Node<T>::remove(T key) {
     // Check if key is in the current node
     if (i < x->keys.size() && key == k) {
         if (x->is_leaf) {
-            x->keys.erase(x->keys.begin() + i);
+            x->keys.erase(i);
         } else {
             if (y->keys.size() >= t) {
                 T predecessor = findPredecessor(y);
@@ -355,8 +363,8 @@ void Node<T>::remove(T key) {
                     k = successor;
                 } else {
                     mergeNodes(y, k, z); // Merge y, k, and z into y
-                    x->keys.erase(x->keys.begin() + i);
-                    x->children.erase(x->children.begin() + i + 1);
+                    x->keys.erase(i);
+                    x->children.erase(i + 1);
                     delete z;
                     y->remove(key);
                 }
