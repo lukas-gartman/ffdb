@@ -3,13 +3,13 @@
 #include <cassert>
 #include <stdexcept>
 
-Allocator::Allocator(State* state, std::size_t memory_map_size):
+Allocator::Allocator(DBState* state, std::size_t memory_map_size):
     state(state),
     memory_map_size(memory_map_size),
     local_top(state->top),
+    last_free_block({0, 0}),
     block_descriptor_list(state->free_list),
-    unused_block_descriptor_list(state->free_descriptors),
-    last_free_block({0, 0}) {}
+    unused_block_descriptor_list(state->free_descriptors) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
     Object obj;
@@ -64,7 +64,8 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
 
     if (last_free_block.obj != 0) {
         // Merge with last_free_block is adjacent.
-        const bool lsb_is_before = last_free_block.obj + last_free_block.size == obj;
+        const bool lsb_is_before =
+            last_free_block.obj + last_free_block.size == obj;
         const bool lsb_is_after = obj + bytes == last_free_block.obj;
 
         if (lsb_is_before || lsb_is_after) {

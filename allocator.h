@@ -2,20 +2,13 @@
 #define ALLOCATOR_H
 
 #include "typedefs.h"
+#include "DBState.h"
 
 #include <stdexcept>
 
 class Allocator {
 public:
-    struct State {
-        std::size_t file_size;
-
-        Object top;
-        Object free_list;
-        Object free_descriptors;
-    };
-
-    Allocator(State *state, std::size_t memory_map_size);
+    Allocator(DBState *state, std::size_t memory_map_size);
 
     template <class A> Ref<A> malloc(const std::size_t extra_bytes = 0) {
         return malloc_internal(sizeof(A) + extra_bytes);
@@ -31,15 +24,12 @@ private:
         std::size_t size;
     };
 
-    // TODO: Makes no sense to have a Block as a member as BlockDescriptor
-    // TODO: points to a block and contains its size. It does not contain
-    // TODO: the block itself.
     struct BlockDescriptor {
         Block block;
         Ref<BlockDescriptor> next;
     };
 
-    State *state;
+    DBState *state;
     std::size_t memory_map_size;
 
     Object local_top;

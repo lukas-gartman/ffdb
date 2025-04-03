@@ -34,4 +34,5 @@ add_executable(ffdb main.cpp
         allocator.cpp
         allocator.h
         ref_list.h
+        DBState.h
 )

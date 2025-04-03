@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cstdint>
 #include "../allocator.h" // Should include typedefs.h
+#include "../DBState.h"
 
 static const std::size_t PAGE_SIZE = 4096;
 
@@ -36,17 +37,17 @@ TEST(AllocatorTest, MallocTestSeq) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
     Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
@@ -76,17 +77,17 @@ TEST(AllocatorTest, FreeTestSeq) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
     Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
@@ -124,17 +125,17 @@ TEST(AllocatorTest, FreeTestMerge) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
     Ref<uint8_t> d3 = alloc.malloc<uint8_t>();
@@ -173,17 +174,17 @@ TEST(AllocatorTest, BlockDescriptorTestNewTop) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
 
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     alloc.malloc<uint8_t>();
@@ -207,17 +208,17 @@ TEST(AllocatorTest, FreeTestOverwrite) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
 
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
@@ -261,18 +262,18 @@ TEST(AllocatorTest, FreeTestOverwriteHalfBD) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
 
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
 
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint16_t> d2 = alloc.malloc<uint16_t>();
@@ -328,18 +329,18 @@ TEST(AllocatorTest, FreeTestOverwriteHalfBestFit) {
 
     current_base = (unsigned char *) mm_state.memory_map;
 
-    auto *alloc_state = (Allocator::State *) current_base;
+    auto *alloc_state = (DBState *) current_base;
     alloc_state->file_size = mm_state.memory_map_size;
     alloc_state->top = 1;
     alloc_state->free_list = 0;
     alloc_state->free_descriptors = 0;
 
-    current_base += sizeof(Allocator::State);
+    current_base += sizeof(DBState);
 
     unsigned char *data = (Ref<unsigned char>) alloc_state->top;
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+        mm_state.memory_map_size - sizeof(DBState));
 
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint8_t> d2 = alloc.malloc<uint8_t>();
