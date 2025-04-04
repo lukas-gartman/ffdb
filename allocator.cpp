@@ -84,9 +84,9 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
     last_free_block.size = bytes;
 }
 
-Ref<Allocator::BlockDescriptor>
+Ref<Allocator::BlockDescr>
 Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
-    Ref<BlockDescriptor> block_descriptor = 0;
+    Ref<BlockDescr> block_descriptor = 0;
 
     if (unused_block_descriptor_list != 0) {
         block_descriptor = unused_block_descriptor_list;
@@ -101,7 +101,7 @@ Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
             throw std::out_of_range("Block size too large");
 
         block_descriptor = local_top;
-        local_top += sizeof(BlockDescriptor);
+        local_top += sizeof(BlockDescr);
     }
 
     block_descriptor->block.obj = obj;
@@ -112,7 +112,7 @@ Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
 }
 
 void Allocator::insert_block_descriptor(Object obj, std::size_t block_size) {
-    Ref<BlockDescriptor> new_list =
+    Ref<BlockDescr> new_list =
         new_block_descriptor(obj, block_size);
 
     new_list->next = block_descriptor_list;
@@ -124,11 +124,11 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     if (block_descriptor_list == 0)
         return 0;
 
-    Ref<BlockDescriptor> best_fit_prev = 0;
-    Ref<BlockDescriptor> best_fit = 0;
+    Ref<BlockDescr> best_fit_prev = 0;
+    Ref<BlockDescr> best_fit = 0;
 
-    Ref<BlockDescriptor> prev_descriptor = 0;
-    Ref<BlockDescriptor> current_descriptor = block_descriptor_list;
+    Ref<BlockDescr> prev_descriptor = 0;
+    Ref<BlockDescr> current_descriptor = block_descriptor_list;
 
     // Find the best fitting block.
     while (current_descriptor != 0) {
@@ -180,3 +180,89 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
 
     return offset;
 }
+
+class Allocator::BDList {
+public:
+    class Iterator {
+        //friend class RefList;
+    private:
+        Iterator(Ref<BlockDescr> start, BDList *parent_list):
+            prev(0), current(start), parent_list(parent_list) {}
+
+        Ref<BlockDescr> prev;
+        Ref<BlockDescr> current;
+        BDList *parent_list;
+
+    public:
+        void next() {
+            prev = current;
+            current = current->next;
+        }
+
+        Ref<BlockDescr> remove() {
+            if (current == 0)
+                throw std::runtime_error("End of list");
+
+            auto to_remove = current;
+            current = current->next;
+
+            if (prev != 0) prev->next = current;
+            else parent_list->first = current;
+
+            if (current == 0)
+                parent_list->last = prev;
+
+            to_remove->next = 0;
+
+            return to_remove;
+        }
+
+        Ref<BlockDescr> get() const {
+            return current;
+        }
+    };
+
+    BDList(): first(0), last(0) {}
+
+    void push(Ref<BlockDescr> block_descr){
+        block_descr->next = first;
+        first = block_descr;
+
+        if (last == 0) last = first;
+    }
+
+    Ref<BlockDescr> pop() {
+        if (is_empty())
+            throw std::runtime_error("Empty list.");
+
+        auto to_remove = first;
+        first = first->next;
+
+        if (first == 0) last = 0;
+
+        to_remove->next = 0;
+
+        return to_remove;
+    }
+
+    Ref<BlockDescr> get_first() const {
+        return first;
+    }
+
+    Ref<BlockDescr> get_last() const {
+        return last;
+    }
+
+    bool is_empty() const {
+        return first == 0;
+    }
+
+    Iterator get_iterator() const {
+        return {first, const_cast<BDList *>(this)};
+    }
+
+    friend class Iterator;
+private:
+    Ref<BlockDescr> first;
+    Ref<BlockDescr> last;
+};

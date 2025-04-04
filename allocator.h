@@ -24,10 +24,12 @@ private:
         std::size_t size;
     };
 
-    struct BlockDescriptor {
+    struct BlockDescr {
         Block block;
-        Ref<BlockDescriptor> next;
+        Ref<BlockDescr> next;
     };
+
+    class BDList;
 
     DBState *state;
     std::size_t memory_map_size;
@@ -40,12 +42,12 @@ private:
     void free_internal(Object obj, std::size_t bytes);
 
     // Used for checking for free blocks to mitigate fragmentation.
-    Ref<BlockDescriptor> block_descriptor_list;
+    Ref<BlockDescr> block_descriptor_list;
 
     // Used for checking for free block descriptors for reuse.
-    Ref<BlockDescriptor> unused_block_descriptor_list;
+    Ref<BlockDescr> unused_block_descriptor_list;
 
-    Ref<BlockDescriptor> new_block_descriptor(
+    Ref<BlockDescr> new_block_descriptor(
         Object obj,
         std::size_t block_size
     );
