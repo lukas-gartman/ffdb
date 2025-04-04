@@ -53,7 +53,7 @@ public:
             throw std::out_of_range("Index out of bounds at index " + std::to_string(index) + " (size: " + std::to_string(_size) + ", capacity: " + std::to_string(_capacity) + ")");
         }
         if (index >= _size) {
-            _size += 1; // Update size when expanding
+            ++_size; // Update size when expanding
         }
         return data[index];
     }

@@ -4,7 +4,6 @@
 #ifndef BTREE_H
 #define BTREE_H
 
-#include "FixedArray.h"
 #include <concepts>
 
 // Ensure the key type is comparable to other keys
@@ -18,422 +17,311 @@ concept Comparable = requires(T a, T b) {
     { a != b } -> std::convertible_to<bool>;
 };
 
-template <Comparable T>
+template <Comparable T, int t>
 class BTree;
 
-template <Comparable T>
+template <Comparable T, int t>
 class Node {
 private:
-    FixedArray<T> keys;
-    FixedArray<Node*> children;
-    int t; // Minimum degree, the lower bound
-    bool is_leaf;
+    T keys[2*t-1];
+    Node *children[2*t];
+    int n; // Number of keys in the node
+    bool isLeaf;
 
 public:
-    Node(int t, bool is_leaf);
+    explicit Node(const bool isLeaf) : n(0), isLeaf(isLeaf) {
+        for (int i = 0; i < 2*t; ++i) {
+            children[i] = nullptr;
+        }
+    }
 
-    Node *search(T key);
-    void insertNonFull(T key);
-    void splitChild(int i, Node *y);
-    void remove(T key);
-
-    // Helper functions
-    int findKeyIndex(T key);
-    T findPredecessor(Node *node);
-    T findSuccessor(Node *node);
-    void mergeNodes(Node *y, T k, Node *z);
-    void moveKeyAndChildFromSibling(Node *x, int i, bool isLeftSibling);
-    void mergeChildWithSibling(Node *x, int i, bool isLeftSibling);
-
-    friend class BTree<T>;
+    friend class BTree<T, t>;
 };
 
-template <Comparable T>
+template <Comparable T, int t>
 class BTree {
 private:
-    Node<T> *root;
-    int t; // Minimum degree, the lower bound
+    Node<T, t> *root;
 
-public:
-    explicit(false)
-    BTree(int t);
-
-    Node<T> *search(T key);
-    void insert(T key);
-    void remove(T key);
-};
-
-template <Comparable T>
-Node<T>::Node(int t, bool is_leaf) {
-    this->t = t; // Minimum degree, the lower bound
-    this->is_leaf = is_leaf;
-
-    // CLRS B-tree properties:
-    // 1. Every node has at most 2t-1 keys and at most 2t children
-    // 2. Every node (except the root) has at least t-1 keys and at least t children
-    this->keys = FixedArray<T>(2*t - 1);
-    if (!is_leaf) {
-        this->children = FixedArray<Node<T>*>(2*t);
-    }
-}
-
-// Helper function to find the index of the first key greater than or equal to key
-template <Comparable T>
-int Node<T>::findKeyIndex(T key) {
-    int idx = 0;
-    while (idx < keys.size() && keys[idx] < key) {
-        ++idx;
-    }
-    return idx;
-}
-
-template <Comparable T>
-Node<T> *Node<T>::search(T key) {
-    int i = findKeyIndex(key);
-    return i < keys.size() && key == keys[i] ? this // If the key is found in the current node
-       : is_leaf ? nullptr // Nothing further to search
-       : children[i]->search(key); // Look further in the child node
-}
-
-template <Comparable T>
-void Node<T>::insertNonFull(T key) {
-    int i = keys.size() - 1;
-    if (is_leaf) { // If the current node is a leaf, insert the key
-        keys.resize(keys.size() + 1); // Make space for the new key
-        // Find the key that is less than the key to be inserted
-        while (i >= 0 && key < keys[i]) {
-            keys[i+1] = keys[i]; // Shift the key to the right
-            --i;
+    Node<T, t> *search(Node<T, t> *x, T key) {
+        int i = 0;
+        while (i < x->n && key > x->keys[i]) {
+            i++;
         }
 
-        keys[i+1] = key; // Insert the key next to the key that is less than it
-    } else { // Insert the key into the appropriate child node
-        // Find the child node that the key should be inserted into
-        while (i >= 0 && key < keys[i]) {
-            --i;
+        return i < x->n && key == x->keys[i] ? x
+            : x->isLeaf ? nullptr
+            : search(x->children[i], key);
+    }
+
+    void splitChild(Node<T, t> *x, int i) {
+        auto *y = x->children[i];
+        auto *z = new Node<T, t>(y->isLeaf);
+        z->n = t - 1;
+
+        // Copy the last t-1 keys of y to z
+        for (int j = 0; j < t - 1; j++) {
+            z->keys[j] = y->keys[j + t];
         }
 
-        ++i; // Increment i to get the child node index
-
-        // Check if the child node is full
-        if (children[i]->keys.size() == 2*t - 1) {
-            splitChild(i, children[i]);
-            // Determine which of the two children to insert the key into
-            if (key > keys[i]) {
-                ++i;
+        // Copy the last t children of y to z
+        if (!y->isLeaf) {
+            for (int j = 0; j < t; j++) {
+                z->children[j] = y->children[j + t];
             }
         }
 
-        children[i]->insertNonFull(key);
-    }
-}
+        // Store the middle key before reducing y's size
+        T middleKey = y->keys[t - 1];
 
-template <Comparable T>
-void Node<T>::splitChild(int i, Node *y) {
-    Node *z = new Node(y->t, y->is_leaf);
-    z->keys.resize(t - 1); // z will have t-1 keys
+        // Reduce the number of keys in y
+        y->n = t - 1;
 
-    // Copy the upper half of y's keys to z's lower half
-    for (int j = 0; j < t - 1; ++j) {
-        z->keys[j] = y->keys[j + t];
-    }
-
-    if (!y->is_leaf) {
-        // Copy the upper half of y's children to z's lower half
-        for (int j = 0; j < t; ++j) {
-            z->children[j] = y->children[j + t];
+        // Make room for the new child in x
+        for (int j = x->n; j >= i + 1; --j) {
+            x->children[j + 1] = x->children[j];
         }
-    }
 
-    // Store the middle key of y which will be moved up to the parent
-    T middleKey = y->keys[t - 1];
+        // Insert the new child into x
+        x->children[i + 1] = z;
 
-    // Remove the upper half of y's keys that were copied to z
-    y->keys.resize(t - 1);
-
-    // Move the children to the right to make space for z
-    for (int j = keys.size(); j >= i+1; --j) {
-        children[j+1] = children[j];
-    }
-    // Insert z as a child to the free space we just made
-    children[i+1] = z;
-
-    // Move the keys to the right to make space for the middle key of y
-    for (int j = keys.size() - 1; j >= i; --j) {
-        keys[j+1] = keys[j];
-    }
-    // Insert the middle key of y into the current node
-    keys[i] = middleKey;
-    // Increase the number of keys in the current node
-    keys.resize(keys.size() + 1);
-}
-
-template <Comparable T>
-T Node<T>::findPredecessor(Node<T> *node) {
-    auto k_prime = node;
-    while (!k_prime->is_leaf) {
-        k_prime = k_prime->children[k_prime->keys.size()];
-    }
-    return k_prime->keys[k_prime->keys.size() - 1];
-}
-
-template <Comparable T>
-T Node<T>::findSuccessor(Node<T> *node) {
-    auto k_prime = node;
-    while (!k_prime->is_leaf) {
-        k_prime = k_prime->children[0];
-    }
-    return k_prime->keys[0];
-}
-
-template <Comparable T>
-void Node<T>::mergeNodes(Node<T> *y, T k, Node<T> *z) {
-    y->keys[y->keys.size()] = k;
-    for (size_t i = 0; i < z->keys.size(); ++i) {
-        y->keys[y->keys.size()] = z->keys[i];
-    }
-    if (!y->is_leaf) {
-        for (size_t i = 0; i < z->children.size(); ++i) {
-            y->children[y->children.size()] = z->children[i];
+        // Make room for the new key in x
+        for (int j = x->n - 1; j >= i; j--) {
+            x->keys[j + 1] = x->keys[j];
         }
+
+        // Insert the middle key of y into x
+        x->keys[i] = middleKey;
+        ++x->n;
     }
-}
 
-template <Comparable T>
-void Node<T>::moveKeyAndChildFromSibling(Node<T> *x, int i, bool isLeftSibling) {
-    Node<T> *child = x->children[i];
-    Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
+    void insertNonFull(Node<T, t> *x, T key) {
+        int i = x->n - 1;
 
-    if (isLeftSibling) {
-        // Shift all keys in the child node to the right
-        for (int j = child->keys.size() - 1; j >= 0; --j) {
-            child->keys[j+1] = child->keys[j];
-        }
-        if (!child->is_leaf) {
-            // Shift all children in the child node to the right
-            for (int j = child->children.size() - 1; j >= 0; --j) {
-                child->children[j+1] = child->children[j];
+        if (x->isLeaf) {
+            while (i >= 0 && key < x->keys[i]) {
+                x->keys[i + 1] = x->keys[i];
+                i--;
             }
-        }
 
-        // Move the key from the current node down into the child node
-        child->keys[0] = x->keys[i-1];
-        if (!child->is_leaf) {
-            // Move the child pointer from the left sibling up into the current node
-            child->children[0] = sibling->children[sibling->children.size() - 1];
-        }
-
-        // Move the key from the left sibling up into the current node
-        x->keys[i-1] = sibling->keys[sibling->keys.size() - 1];
-
-        // Remove the key and child pointer from the left sibling
-        sibling->keys.resize(sibling->keys.size() - 1);
-        if (!sibling->is_leaf) {
-            sibling->children.resize(sibling->children.size() - 1);
-        }
-    } else {
-        // Move the key from the current node down into the child node
-        child->keys[child->keys.size()] = x->keys[i];
-        if (!child->is_leaf) {
-            // Move the child pointer from the right sibling up into the current node
-            child->children[child->children.size()] = sibling->children[0];
-        }
-
-        // Move the key from the right sibling up into the current node
-        x->keys[i] = sibling->keys[0];
-
-        // Shift all keys in the right sibling to the left
-        for (int j = 1; j < sibling->keys.size(); ++j) {
-            sibling->keys[j-1] = sibling->keys[j];
-        }
-        if (!sibling->is_leaf) {
-            // Shift all children in the right sibling to the left
-            for (int j = 1; j < sibling->children.size(); ++j) {
-                sibling->children[j-1] = sibling->children[j];
-            }
-        }
-
-        // Remove the key and child pointer from the right sibling
-        sibling->keys.resize(sibling->keys.size() - 1);
-        if (!sibling->is_leaf) {
-            sibling->children.resize(sibling->children.size() - 1);
-        }
-    }
-
-    // Update the size of the child node
-    child->keys.resize(child->keys.size() + 1);
-    if (!child->is_leaf) {
-        child->children.resize(child->children.size() + 1);
-    }
-}
-
-template <Comparable T>
-void Node<T>::mergeChildWithSibling(Node<T> *x, int i, bool isLeftSibling) {
-    Node<T> *child = x->children[i];
-    Node<T> *sibling = isLeftSibling ? x->children[i-1] : x->children[i+1];
-
-    if (isLeftSibling) {
-        // Move the key from the current node down into the child node
-        for (int j = child->keys.size() - 1; j >= 0; --j) {
-            child->keys[j+1] = child->keys[j];
-        }
-        child->keys[0] = x->keys[i-1];
-
-        // Move all keys from the left sibling into the child node
-        for (int j = sibling->keys.size() - 1; j >= 0; --j) {
-            child->keys[j+1] = sibling->keys[j];
-        }
-        if (!child->is_leaf) {
-            // Move all children from the left sibling into the child node
-            for (int j = sibling->children.size() - 1; j >= 0; --j) {
-                child->children[j+1] = sibling->children[j];
-            }
-        }
-
-        // Remove the key and child pointer from the current node
-        for (int j = i; j < x->keys.size(); ++j) {
-            x->keys[j-1] = x->keys[j];
-        }
-        for (int j = i + 1; j < x->children.size(); ++j) {
-            x->children[j-1] = x->children[j];
-        }
-
-        // Delete the left sibling
-        delete sibling;
-    } else {
-        // Move the key from the current node down into the child node
-        child->keys[child->keys.size()] = x->keys[i];
-
-        // Move all keys from the right sibling into the child node
-        for (int j = 0; j < sibling->keys.size(); ++j) {
-            child->keys[child->keys.size() + 1 + j] = sibling->keys[j];
-        }
-        if (!child->is_leaf) {
-            // Move all children from the right sibling into the child node
-            for (int j = 0; j < sibling->children.size(); ++j) {
-                child->children[child->children.size() + 1 + j] = sibling->children[j];
-            }
-        }
-
-        // Remove the key and child pointer from the current node
-        for (int j = i + 1; j < x->keys.size(); ++j) {
-            x->keys[j-1] = x->keys[j];
-        }
-        for (int j = i + 2; j < x->children.size(); ++j) {
-            x->children[j-1] = x->children[j];
-        }
-
-        // Delete the right sibling
-        delete sibling;
-    }
-
-    // Update the size of the current node
-    x->keys.resize(x->keys.size() - 1);
-    x->children.resize(x->children.size() - 1);
-
-    // Update the size of the child node
-    child->keys.resize(child->keys.size() + sibling->keys.size() + 1);
-    if (!child->is_leaf) {
-        child->children.resize(child->children.size() + sibling->children.size() + 1);
-    }
-}
-
-template <Comparable T>
-void Node<T>::remove(T key) {
-    int i = findKeyIndex(key);
-
-    auto k = keys[i];
-    auto x = this;
-    auto y = children[i];
-    auto z = children[i+1];
-
-    // Check if key is in the current node
-    if (i < x->keys.size() && key == k) {
-        if (x->is_leaf) {
-            x->keys.erase(i);
+            x->keys[i + 1] = key;
+            x->n = x->n + 1;
         } else {
-            if (y->keys.size() >= t) {
-                T predecessor = findPredecessor(y);
-                x->remove(predecessor);
-                k = predecessor;
-            } else if (y->keys.size() < t) {
-                if (z->keys.size() >= t) {
-                    T successor = findSuccessor(z);
-                    x->remove(successor);
-                    k = successor;
-                } else {
-                    mergeNodes(y, k, z); // Merge y, k, and z into y
-                    x->keys.erase(i);
-                    x->children.erase(i + 1);
-                    delete z;
-                    y->remove(key);
+            while (i >= 0 && key < x->keys[i]) {
+                i--;
+            }
+
+            i++;
+            if (x->children[i]->n == 2*t - 1) {
+                splitChild(x, i);
+
+                if (key > x->keys[i]) {
+                    i++;
                 }
             }
+            insertNonFull(x->children[i], key);
         }
-    // The key is not in the current node, search in the node closest to the key
-    } else {
-        // If the key exists, it must be in the subtree rooted at the last child
-        bool isLastChild = i == x->keys.size();
+    }
 
-        // Check if child has minimum allowed (t-1) keys
-        if (x->children[i]->keys.size() < t) {
-            // Check if child node has an immediate sibling with at least t keys
-            if (i != 0 && x->children[i-1]->keys.size() >= t) { // Left
-                moveKeyAndChildFromSibling(x, i, true);
-            } else if (i != x->keys.size() && x->children[i+1]->keys.size() >= t) { // Right
-                moveKeyAndChildFromSibling(x, i, false);
-            // If child node and both immediate siblings have t-1 keys
+    T getPredecessor(Node<T, t> *node, int i) {
+        auto *current = node->children[i];
+        while (!current->isLeaf) {
+            current = current->children[current->n];
+        }
+        return current->keys[current->n - 1];
+    }
+
+    T getSuccessor(Node<T, t> *node, int i) {
+        auto *current = node->children[i + 1];
+        while (!current->isLeaf) {
+            current = current->children[current->n];
+        }
+        return current->keys[0];
+    }
+
+    void fill(Node<T, t> *node, int i) {
+        auto *leftSibling = (i != 0) ? node->children[i - 1] : nullptr;
+        auto *rightSibling = (i != node->n) ? node->children[i + 1] : nullptr;
+
+        if (leftSibling && leftSibling->n >= t) {
+            borrowFromPrev(node, i);
+        } else if (rightSibling && rightSibling->n >= t) {
+            borrowFromNext(node, i);
+        } else {
+            if (i != node->n) {
+                merge(node, i);
             } else {
-                // Merge child node with one sibling
-                if (i != x->keys.size()) {
-                    mergeChildWithSibling(x, i, false);
-                } else {
-                    mergeChildWithSibling(x, i, true);
-                }
+                merge(node, i - 1);
+            }
+        }
+    }
+
+    void borrowFromPrev(Node<T, t> *node, int i) {
+        auto *child = node->children[i];
+        auto *sibling = node->children[i - 1];
+
+        for (int j = child->n - 1; j >= 0; --j) {
+            child->keys[j + 1] = child->keys[j];
+        }
+
+        if (!child->isLeaf) {
+            for (int j = child->n; j >= 0; --j) {
+                child->children[j + 1] = child->children[j];
             }
         }
 
-        // Recurse on the appropriate child of the current node
-        if (isLastChild && i > x->keys.size()) {
-            x->children[i-1]->remove(key);
+        child->keys[0] = node->keys[i - 1];
+
+        if (!child->isLeaf) {
+            child->children[0] = sibling->children[sibling->n];
+        }
+
+        node->keys[i - 1] = sibling->keys[sibling->n - 1];
+
+        child->n += 1;
+        sibling->n -= 1;
+    }
+
+    void borrowFromNext(Node<T, t> *node, int i) {
+        auto *child = node->children[i];
+        auto *sibling = node->children[i + 1];
+
+        child->keys[child->n] = node->keys[i];
+
+        if (!child->isLeaf) {
+            child->children[child->n + 1] = sibling->children[0];
+        }
+
+        node->keys[i] = sibling->keys[0];
+
+        for (int j = 1; j < sibling->n; ++j) {
+            sibling->keys[j - 1] = sibling->keys[j];
+        }
+
+        if (!sibling->isLeaf) {
+            for (int j = 1; j <= sibling->n; ++j) {
+                sibling->children[j - 1] = sibling->children[j];
+            }
+        }
+
+        child->n += 1;
+        sibling->n -= 1;
+    }
+
+    void merge(Node<T, t> *node, int i) {
+        auto *child = node->children[i];
+        auto *sibling = node->children[i + 1];
+
+        child->keys[t - 1] = node->keys[i];
+
+        for (int j = 0; j < sibling->n; ++j) {
+            child->keys[j + t] = sibling->keys[j];
+        }
+
+        if (!child->isLeaf) {
+            for (int j = 0; j <= sibling->n; ++j) {
+                child->children[j + t] = sibling->children[j];
+            }
+        }
+
+        for (int j = i + 1; j < node->n; ++j) {
+            node->keys[j - 1] = node->keys[j];
+        }
+
+        for (int j = i + 2; j <= node->n; ++j) {
+            node->children[j - 1] = node->children[j];
+        }
+
+        child->n += sibling->n + 1;
+        node->n--;
+
+        delete sibling;
+    }
+
+    void removeFromNonLeaf(Node<T, t> *node, int i) {
+        auto key = node->keys[i];
+
+        if (node->children[i]->n >= t) {
+            T predecessor = getPredecessor(node, i);
+            node->keys[i] = predecessor;
+            remove(node->children[i], predecessor);
+        } else if (node->children[i + 1]->n >= t) {
+            T successor = getSuccessor(node, i);
+            node->keys[i] = successor;
+            remove(node->children[i + 1], successor);
         } else {
-            x->children[i]->remove(key);
+            merge(node, i);
+            remove(node->children[i], key);
         }
     }
-}
 
-template <Comparable T>
-BTree<T>::BTree(int t) {
-    this->t =  t;
-    root = new Node<T>(t, true);
-}
+    void removeFromLeaf(Node<T, t> *node, int i) {
+        for (int j = i + 1; j < node->n; ++j) {
+            node->keys[j - 1] = node->keys[j];
+        }
 
-template <Comparable T>
-Node<T> *BTree<T>::search(T key) {
-    return root == nullptr ? nullptr : root->search(key);
-}
-
-template <Comparable T>
-void BTree<T>::insert(T key) {
-    auto r = root; // Start at the root
-    // If the root is full, split it
-    if (r->keys.size() == 2*t - 1) {
-        // Create a new root
-        auto *s = new Node<T>(t, false);
-        root = s;
-
-        s->children[0] = r; // Make the old root the child of the new root
-        s->splitChild(0, r); // Split the old root to ensure it is no longer full
-        s->insertNonFull(key);
-    } else {
-        r->insertNonFull(key);
+        node->n--;
     }
-}
 
-template <Comparable T>
-void BTree<T>::remove(T key) {
-    if (!root) { return; }
-    root->remove(key);
-}
+    void remove(Node<T, t> *node, T key) {
+        int i = 0;
+        while (i < node->n && node->keys[i] < key) {
+            ++i;
+        }
+
+        if (i < node->n && node->keys[i] == key) {
+            if (node->isLeaf) {
+                removeFromLeaf(node, i);
+            } else {
+                removeFromNonLeaf(node, i);
+            }
+        } else {
+            if (node->isLeaf) { return; }
+
+            bool isLastChild = i == node->n ? true : false;
+
+            if (node->children[i]->n < t) {
+                fill(node, i);
+            }
+
+            if (isLastChild && i > node->n) {
+                remove(node->children[i - 1], key);
+            } else {
+                remove(node->children[i], key);
+            }
+        }
+    }
+public:
+    BTree() { root = new Node<T, t>(true); }
+    // ~BTree() { delete root; } // TODO: recursively delete all nodes
+
+    Node<T, t> *search(T key) {
+        return root == nullptr ? nullptr : search(root, key);
+    }
+
+    void insert(T key) {
+        if (root->n == 2*t - 1) {
+            auto *s = new Node<T, t>(false);
+            s->children[0] = root;
+            root = s;
+            splitChild(s, 0);
+            insertNonFull(s, key);
+        } else {
+            insertNonFull(root, key);
+        }
+    }
+
+    void remove(T key) {
+        if (!root) { return; }
+
+        remove(root, key);
+
+        if (root->n == 0) {
+            auto *tmp = root;
+            root = root->isLeaf ? nullptr : root->children[0];
+            delete tmp;
+        }
+    }
+};
 
 #endif //BTREE_H

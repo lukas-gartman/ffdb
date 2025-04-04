@@ -18,6 +18,7 @@ else()
             tests/test_btree.cpp
             FixedArray.h
             tests/test_fixed_array.cpp
+            BTree.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -29,6 +30,7 @@ add_executable(ffdb main.cpp
         buddy_allocator.h
         typedefs.cpp
         typedefs.h
-        BTree.h
+        BTree.h.bak
         FixedArray.h
+        BTree.h
 )
