@@ -29,8 +29,6 @@ private:
         Ref<BlockDescr> next;
     };
 
-    class BDList;
-
     DBState *state;
     std::size_t memory_map_size;
 
