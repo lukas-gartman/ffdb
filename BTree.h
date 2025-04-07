@@ -151,6 +151,7 @@ private:
 
     T getPredecessor(Node<T, t> *node, int i) {
         assert(node != nullptr);
+        std::cout << "i >= 0 == " << (i >= 0 ? "true" : "false") << ", i < node->n == " << (i < node->n ? "true" : "false") << " (node->n == " << node->n << ")" << std::endl;
         assert(i >= 0 && i < node->n);
         assert(node->children[i] != nullptr);
 
@@ -314,12 +315,14 @@ private:
 
     void removeFromNonLeaf(Node<T, t> *node, int i) {
         assert(node != nullptr);
-        std::cout << node->n << ", i=" << i << std::endl;
-        assert(node->n >= t - 1);
+        std::cout << "node->n == " << node->n << ", i=" << i << std::endl;
+        assert(node->n >= t - 1 || root == node);
+        assert(node->n > 0 && node->n <= 2 * t - 1);
 
         auto key = node->keys[i];
 
         if (node->children[i]->n >= t) {
+            std::cout << "node->n before getPredecessor() == " << node->n << std::endl;
             T predecessor = getPredecessor(node, i);
             node->keys[i] = predecessor;
             remove(node->children[i], predecessor);
@@ -331,11 +334,12 @@ private:
             assert(node->children[i + 1]->n >= t - 1);
         } else {
             merge(node, i);
+            assert(node->children[i]->n >= t - 1);
             remove(node->children[i], key);
             assert(node->children[i]->n >= t - 1);
         }
 
-        assert(node->n >= t - 1);
+        assert(node->n >= t - 1 || root == node);
     }
 
     void removeFromLeaf(Node<T, t> *node, const int i) {
@@ -350,7 +354,7 @@ private:
 
     void remove(Node<T, t> *node, T key) {
         assert(node != nullptr);
-        assert(node->n >= 0 && node->n < 2 * t);
+        assert(node->n > 0 && node->n < 2 * t);
 
         int i = 0;
         while (i < node->n && node->keys[i] < key) {
