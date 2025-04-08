@@ -3,6 +3,9 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <algorithm>
+#include <random>
+#include <unordered_set>
 
 TEST(BTreeTest, InsertTest) {
     BTree<int, 3> tree;
@@ -27,7 +30,7 @@ TEST(BTreeTest, InsertTest) {
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
-    constexpr int numKeys = 50;
+    constexpr int numKeys = 5000000;
     BTree<int, 3> tree;
     for (int i = 1; i <= numKeys; ++i) {
         tree.insert(i);
@@ -42,47 +45,213 @@ TEST(BTreeTest, RandomInsert) {
     constexpr int numKeys = 50;
     BTree<int, 3> tree;
     std::srand(std::time(nullptr));
-    int keys[numKeys];
+    std::set<int> keys;
 
-    for (int i = 0; i < numKeys; ++i) {
-        keys[i] = std::rand() % 100000 + 1;
-        tree.insert(keys[i]);
+    while (keys.size() < numKeys) {
+        int key = std::rand() % numKeys * 5 + 1;
+        if (keys.insert(key).second) {
+            tree.insert(key);
+        }
     }
 
-    for (int i = 0; i < numKeys; ++i) {
-        EXPECT_TRUE(tree.search(keys[i]));
+    for (int key : keys) {
+        EXPECT_TRUE(tree.search(key));
     }
+}
+
+TEST(BTreeTest, DuplicateTest) {
+    constexpr int numKeys = 1000000;
+    BTree<int, 100> tree;
+    std::srand(std::time(nullptr));
+    std::set<int> keys;
+
+    while (keys.size() < numKeys) {
+        int key = std::rand() % numKeys * 5 + 1;
+        if (keys.insert(key).second) {
+            tree.insert(key);
+        }
+    }
+
+    std::set<int> uniqueKeys;
+    bool hasDuplicate = false;
+
+    tree.traverse([&uniqueKeys, &hasDuplicate](const int key) {
+        if (uniqueKeys.contains(key)) {
+            std::cout << "Duplicate key found: " << key << std::endl;
+            hasDuplicate = true;
+        } else {
+            uniqueKeys.insert(key);
+        }
+    });
+
+    EXPECT_FALSE(hasDuplicate);
 }
 
 TEST(BTreeTest, RemoveTest) {
     BTree<int, 3> tree;
-    tree.insert(13); // remove this
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
     tree.insert(6);
     tree.insert(12);
-    // tree.insert(30);
+    tree.insert(30);
     tree.insert(7);
-    // tree.insert(17);
+    tree.insert(17);
 
     tree.remove(6);
     tree.remove(13);
     tree.remove(7);
-    // tree.remove(4);
-    // tree.remove(2);
-    // tree.remove(16);
+    tree.remove(4);
+    tree.remove(2);
+    tree.remove(16);
 
     EXPECT_FALSE(tree.search(6));
     EXPECT_FALSE(tree.search(13));
     EXPECT_FALSE(tree.search(7));
-    // EXPECT_FALSE(tree.search(4));
-    // EXPECT_FALSE(tree.search(2));
-    // EXPECT_FALSE(tree.search(16));
+    EXPECT_FALSE(tree.search(4));
+    EXPECT_FALSE(tree.search(2));
+    EXPECT_FALSE(tree.search(16));
     EXPECT_TRUE(tree.search(10));
     EXPECT_TRUE(tree.search(20));
     EXPECT_TRUE(tree.search(5));
-    // EXPECT_TRUE(tree.search(12));
-    // EXPECT_TRUE(tree.search(30));
-    // EXPECT_TRUE(tree.search(17));
+    EXPECT_TRUE(tree.search(12));
+    EXPECT_TRUE(tree.search(30));
+    EXPECT_TRUE(tree.search(17));
+}
+
+TEST(BTreeTest, SequentialInsertRemove) {
+    constexpr int numKeys = 1000000;
+    BTree<int, 3> tree;
+
+    for (int i = numKeys; i >= numKeys; --i) {
+        tree.insert(i);
+    }
+
+    for (int i = numKeys; i >= numKeys; --i) {
+        tree.remove(i);
+        EXPECT_FALSE(tree.search(i)) << "Failed for key: " << i;
+    }
+}
+
+std::vector<int> generateRandomKeys(int numKeys) {
+    std::srand(std::time(nullptr));
+    std::vector<int> keys;
+    std::unordered_set<int> keySet;
+
+    while (keySet.size() < numKeys) {
+        int key = std::rand() % numKeys;
+        if (keySet.insert(key).second) {
+            keys.push_back(key);
+        }
+    }
+
+    return keys;
+}
+
+TEST(BTreeTest, RandomInsertRemove) {
+    constexpr int numKeys = 1000000;
+    BTree<int, 3> tree;
+
+    std::cout << "Generating random keys..." << std::endl;
+    std::vector<int> keys = generateRandomKeys(numKeys);
+    for (const int key : keys) {
+        tree.insert(key);
+        EXPECT_TRUE(tree.search(key)) << "Insert failed for key: " << key;
+    }
+
+    std::cout << "Shuffling keys for random removal..." << std::endl;
+
+    // Shuffle the keys for random removal
+    auto rng = std::default_random_engine {};
+    std::ranges::shuffle(keys, rng);
+
+    std::cout << "Removing keys..." << std::endl;
+    for (const int key : keys) {
+        tree.remove(key);
+        // EXPECT_FALSE(tree.search(key)) << "Failed for key: " << key;;
+    }
+
+    for (const int key : keys) {
+        tree.insert(key);
+        EXPECT_TRUE(tree.search(key)) << "Insert failed for key: " << key;
+    }
+}
+
+TEST(BTreeTest, IncrementalInsertDelete) {
+    const int start = 44;
+    const int numKeys = 50;
+    std::vector<int> keys = generateRandomKeys(numKeys);
+    for (int i = start; i < numKeys; ++i) {
+        std::cout << "\niteration " << i << std::endl;
+        BTree<int, 3> tree;
+        bool testFailed = false;
+        int failedKey = -1;
+        std::string failedOperation;
+
+        // Insert all keys
+        for (int j = 0; j < i; ++j) {
+            int key = keys[j];
+            std::cout << "insert " << key << ", (j=" << j << ")" << std::endl;
+            tree.insert(key);
+            if (!tree.search(key)) {
+                testFailed = true;
+                failedKey = key;
+                failedOperation = "insert";
+                break;
+            }
+        }
+
+        if (testFailed) {
+            FAIL() << "Test failed at iteration " << i
+                   << " during " << failedOperation
+                   << " for key: " << failedKey;
+            break;
+        }
+
+        // Remove all keys
+        for (int j = 0; j < i; ++j) {
+            int key = keys[j];
+            std::cout << "remove " << key << ", (j=" << j << ")" << std::endl;
+            tree.remove(key);
+            if (tree.search(key)) {
+                testFailed = true;
+                failedKey = key;
+                failedOperation = "delete";
+
+                // tree.remove(key);
+                // if (tree.search(key)) {
+                //     std::cout << "it failed again" << std::endl;
+                // }
+
+                break;
+            }
+        }
+
+        if (testFailed) {
+            FAIL() << "Test failed at iteration " << i
+                   << " during " << failedOperation
+                   << " for key: " << failedKey;
+            break;
+        }
+
+        // Re-insert to verify
+        for (int j = 0; j < i; ++j) {
+            int key = keys[j];
+            std::cout << "re-insert " << key << ", (j=" << j << ")" << std::endl;
+            tree.insert(key);
+            if (!tree.search(key)) {
+                testFailed = true;
+                failedKey = key;
+                failedOperation = "re-insert";
+                break;
+            }
+        }
+
+        if (testFailed) {
+            FAIL() << "Test failed at iteration " << i
+                   << " during " << failedOperation
+                   << " for key: " << failedKey;
+            break;
+        }
+    }
 }
