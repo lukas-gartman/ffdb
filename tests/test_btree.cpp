@@ -149,7 +149,7 @@ std::vector<int> generateRandomKeys(int numKeys) {
 }
 
 TEST(BTreeTest, RandomInsertRemove) {
-    constexpr int numKeys = 1000000;
+    constexpr int numKeys = 10000000;
     BTree<int, 3> tree;
 
     std::cout << "Generating random keys..." << std::endl;
@@ -168,13 +168,103 @@ TEST(BTreeTest, RandomInsertRemove) {
     std::cout << "Removing keys..." << std::endl;
     for (const int key : keys) {
         tree.remove(key);
-        // EXPECT_FALSE(tree.search(key)) << "Failed for key: " << key;;
+        EXPECT_FALSE(tree.search(key)) << "Failed for key: " << key;;
     }
 
     for (const int key : keys) {
         tree.insert(key);
         EXPECT_TRUE(tree.search(key)) << "Insert failed for key: " << key;
     }
+}
+
+TEST(BTreeTest, RootNodeDelete) {
+    BTree<int, 3> tree;
+
+    // Insertion order
+    tree.insert(15);
+    EXPECT_TRUE(tree.search(15));
+    tree.insert(11);
+    EXPECT_TRUE(tree.search(11));
+    tree.insert(27);
+    EXPECT_TRUE(tree.search(27));
+    tree.insert(3);
+    EXPECT_TRUE(tree.search(3));
+    tree.insert(21);
+    EXPECT_TRUE(tree.search(21));
+    tree.insert(24);
+    EXPECT_TRUE(tree.search(24));
+    tree.insert(19);
+    EXPECT_TRUE(tree.search(19));
+    tree.insert(13);
+    EXPECT_TRUE(tree.search(13));
+    tree.insert(22);
+    EXPECT_TRUE(tree.search(22));
+    tree.insert(4);
+    EXPECT_TRUE(tree.search(4));
+    tree.insert(5);
+    EXPECT_TRUE(tree.search(5));
+    tree.insert(8);
+    EXPECT_TRUE(tree.search(8));
+    tree.insert(28);
+    EXPECT_TRUE(tree.search(28));
+    tree.insert(26);
+    EXPECT_TRUE(tree.search(26));
+    tree.insert(7);
+    EXPECT_TRUE(tree.search(7));
+    tree.insert(6);
+    EXPECT_TRUE(tree.search(6));
+    tree.insert(23);
+    EXPECT_TRUE(tree.search(23));
+    tree.insert(29);
+    EXPECT_TRUE(tree.search(29));
+    tree.insert(16);
+    EXPECT_TRUE(tree.search(16));
+    tree.insert(2);
+    EXPECT_TRUE(tree.search(2));
+    tree.insert(25);
+    EXPECT_TRUE(tree.search(25));
+    tree.insert(0);
+    EXPECT_TRUE(tree.search(0));
+    tree.insert(17);
+    EXPECT_TRUE(tree.search(17));
+    tree.insert(12);
+    EXPECT_TRUE(tree.search(12));
+    tree.insert(14);
+    EXPECT_TRUE(tree.search(14));
+    tree.insert(1);
+    EXPECT_TRUE(tree.search(1));
+    tree.insert(9);
+    EXPECT_TRUE(tree.search(9));
+    tree.insert(18);
+    EXPECT_TRUE(tree.search(18));
+    tree.insert(20);
+    EXPECT_TRUE(tree.search(20));
+    tree.insert(10);
+    EXPECT_TRUE(tree.search(10));
+
+    tree.print();
+
+    // Deletion order
+    tree.remove(9);
+    EXPECT_FALSE(tree.search(9));
+    tree.remove(20);
+    EXPECT_FALSE(tree.search(20));
+    tree.remove(6);
+    EXPECT_FALSE(tree.search(6));
+    tree.remove(19);
+    EXPECT_FALSE(tree.search(19));
+    tree.remove(8);
+    EXPECT_FALSE(tree.search(8));
+    tree.remove(15);
+    EXPECT_FALSE(tree.search(15));
+    std::cout << "BEFORE ----------------" << std::endl;
+    tree.print();
+
+    tree.remove(21);
+
+    std::cout << "AFTER ----------------" << std::endl;
+    tree.print();
+    EXPECT_FALSE(tree.search(21));
 }
 
 TEST(BTreeTest, IncrementalInsertDelete) {
