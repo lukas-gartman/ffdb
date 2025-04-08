@@ -52,15 +52,6 @@ private:
             i++;
         }
 
-        // if (i < x->n && key == x->keys[i]) {
-        //     std::cout << "------------------------------" << std::endl;
-        //     std::cout << "Found key: " << key << " at i=" << i << std::endl;
-        //     std::cout << (x->isLeaf ? "Node is a leaf" : "Node is not a leaf") << std::endl;
-        //     std::cout << "Node has " << x->n << " keys out of " << 2*t-1 << std::endl;
-        //     std::cout << "Node has " << (x->isLeaf ? 0 : x->n + 1) << " children out of " << 2*t << std::endl;
-        //     std::cout << "------------------------------" << std::endl;
-        // }
-
         return i < x->n && key == x->keys[i] ? x
             : x->isLeaf ? nullptr
             : search(x->children[i], key);
@@ -149,9 +140,8 @@ private:
         }
     }
 
-    T getPredecessor(Node<T, t> *node, int i) {
+    T getInOrderPredecessor(Node<T, t> *node, int i) {
         assert(node != nullptr);
-        std::cout << "i >= 0 == " << (i >= 0 ? "true" : "false") << ", i < node->n == " << (i < node->n ? "true" : "false") << " (node->n == " << node->n << ")" << std::endl;
         assert(i >= 0 && i < node->n);
         assert(node->children[i] != nullptr);
 
@@ -162,14 +152,14 @@ private:
         return current->keys[current->n - 1];
     }
 
-    T getSuccessor(Node<T, t> *node, int i) {
+    T getInOrderSuccessor(Node<T, t> *node, int i) {
         assert(node != nullptr);
         assert(i >= 0 && i < node->n);
         assert(node->children[i + 1] != nullptr);
 
         auto *current = node->children[i + 1];
         while (!current->isLeaf) {
-            current = current->children[current->n];
+            current = current->children[0];
         }
         return current->keys[0];
     }
@@ -301,12 +291,6 @@ private:
         child->n += sibling->n + 1;
         --node->n;
 
-        // Clean up sibling - make sure it doesn't delete its children
-        // sibling->n = 0;  // Prevent recursive deletion
-        // for (int j = 0; j <= 2*t; j++) {
-        //     sibling->children[j] = nullptr;
-        // }
-
         assert(child->n <= 2 * t - 1);
         assert(node->n >= 0);
 
@@ -315,20 +299,18 @@ private:
 
     void removeFromNonLeaf(Node<T, t> *node, int i) {
         assert(node != nullptr);
-        std::cout << "node->n == " << node->n << ", i=" << i << std::endl;
         assert(node->n >= t - 1 || root == node);
         assert(node->n > 0 && node->n <= 2 * t - 1);
 
         auto key = node->keys[i];
 
         if (node->children[i]->n >= t) {
-            std::cout << "node->n before getPredecessor() == " << node->n << std::endl;
-            T predecessor = getPredecessor(node, i);
+            T predecessor = getInOrderPredecessor(node, i);
             node->keys[i] = predecessor;
             remove(node->children[i], predecessor);
             assert(node->children[i]->n >= t - 1);
         } else if (node->children[i + 1]->n >= t) {
-            T successor = getSuccessor(node, i);
+            T successor = getInOrderSuccessor(node, i);
             node->keys[i] = successor;
             remove(node->children[i + 1], successor);
             assert(node->children[i + 1]->n >= t - 1);
@@ -416,6 +398,21 @@ private:
         }
     }
 
+    void printNode(Node<T, t>* node, const std::string &path) {
+        if (node == nullptr) { return; }
+
+        int i;
+        for (i = 0; i < node->n; i++) {
+            std::cout << node->keys[i] << std::endl;
+        }
+
+        for (i = 0; i <= node->n; i++) {
+            if (!node->isLeaf) {
+                printNode(node->children[i], path + "->" + std::to_string(i));
+            }
+        }
+    }
+
 public:
     BTree() { root = new Node<T, t>(true); }
     ~BTree() { deleteNode(root); }
@@ -460,6 +457,13 @@ public:
     void traverse(Func callback) {
         if (root) {
             traverseNode(root, callback);
+        }
+    }
+
+    void print() {
+        if (root) {
+            printNode(root, std::string("Root"));
+            std::cout << std::endl;
         }
     }
 };
