@@ -181,66 +181,13 @@ TEST(BTreeTest, RootNodeDelete) {
     BTree<int, 3> tree;
 
     // Insertion order
-    tree.insert(15);
-    EXPECT_TRUE(tree.search(15));
-    tree.insert(11);
-    EXPECT_TRUE(tree.search(11));
-    tree.insert(27);
-    EXPECT_TRUE(tree.search(27));
-    tree.insert(3);
-    EXPECT_TRUE(tree.search(3));
-    tree.insert(21);
-    EXPECT_TRUE(tree.search(21));
-    tree.insert(24);
-    EXPECT_TRUE(tree.search(24));
-    tree.insert(19);
-    EXPECT_TRUE(tree.search(19));
-    tree.insert(13);
-    EXPECT_TRUE(tree.search(13));
-    tree.insert(22);
-    EXPECT_TRUE(tree.search(22));
-    tree.insert(4);
-    EXPECT_TRUE(tree.search(4));
-    tree.insert(5);
-    EXPECT_TRUE(tree.search(5));
-    tree.insert(8);
-    EXPECT_TRUE(tree.search(8));
-    tree.insert(28);
-    EXPECT_TRUE(tree.search(28));
-    tree.insert(26);
-    EXPECT_TRUE(tree.search(26));
-    tree.insert(7);
-    EXPECT_TRUE(tree.search(7));
-    tree.insert(6);
-    EXPECT_TRUE(tree.search(6));
-    tree.insert(23);
-    EXPECT_TRUE(tree.search(23));
-    tree.insert(29);
-    EXPECT_TRUE(tree.search(29));
-    tree.insert(16);
-    EXPECT_TRUE(tree.search(16));
-    tree.insert(2);
-    EXPECT_TRUE(tree.search(2));
-    tree.insert(25);
-    EXPECT_TRUE(tree.search(25));
-    tree.insert(0);
-    EXPECT_TRUE(tree.search(0));
-    tree.insert(17);
-    EXPECT_TRUE(tree.search(17));
-    tree.insert(12);
-    EXPECT_TRUE(tree.search(12));
-    tree.insert(14);
-    EXPECT_TRUE(tree.search(14));
-    tree.insert(1);
-    EXPECT_TRUE(tree.search(1));
-    tree.insert(9);
-    EXPECT_TRUE(tree.search(9));
-    tree.insert(18);
-    EXPECT_TRUE(tree.search(18));
-    tree.insert(20);
-    EXPECT_TRUE(tree.search(20));
-    tree.insert(10);
-    EXPECT_TRUE(tree.search(10));
+    std::vector<int> keys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4,
+                             5, 8, 28, 26, 7, 6, 23, 29, 16, 2, 25,
+                             0, 17, 12, 14, 1, 9, 18, 20, 10};
+    for (int key : keys) {
+        tree.insert(key);
+        EXPECT_TRUE(tree.search(key));
+    }
 
     tree.print();
 
