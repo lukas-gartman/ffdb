@@ -13,10 +13,15 @@ else()
     add_executable(ffdb_tests
             tests/test_main.cpp
             tests/test_example.cpp
+            tests/test_allocator.cpp
+            tests/test_ref_list.cpp
+            tests/test_btree.cpp
             typedefs.cpp
             typedefs.h
-            tests/test_btree.cpp
+            allocator.cpp
+            allocator.h
             BTree.h
+            ref_list.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -28,5 +33,8 @@ add_executable(ffdb main.cpp
         buddy_allocator.h
         typedefs.cpp
         typedefs.h
+        allocator.cpp
+        allocator.h
         BTree.h
+        ref_list.h
 )
