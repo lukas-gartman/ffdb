@@ -14,26 +14,30 @@ Allocator::Allocator(State* state, std::size_t memory_map_size):
 Object Allocator::malloc_internal(std::size_t bytes) {
     Object obj;
 
-    // Try using the last free block.
+    // Check if there is a free block cached that can be used.
     if (last_free_block.obj != 0 &&
         last_free_block.size >= bytes) {
 
+        // Allocate exactly the needed amount of data in the last free block.
         obj = last_free_block.obj;
         last_free_block.obj += bytes;
         last_free_block.size -= bytes;
 
+        // If the last free block is empty, set it to 0, meaning that no free
+        // block is cached anymore.
         if (last_free_block.size == 0) last_free_block.obj = 0;
 
         return obj;
     }
 
-    // Try finding a fitting block in the block descriptor list.
+    // Check if there if a block descriptor points to a free block that can be
+    // used.
     obj = delete_block_descriptor(bytes);
     if (obj != 0) return obj;
 
-    // The above failed. Get memory from the top.
+    // If the above failed, allocate memory on the top of the memory map.
     std::size_t free_size = memory_map_size - local_top;
-    // TODO: Temp until we can resize the memory map
+
     if (bytes > free_size)
         throw std::out_of_range("Block size too large");
 
@@ -44,13 +48,17 @@ Object Allocator::malloc_internal(std::size_t bytes) {
 }
 
 void Allocator::free_internal(Object obj, std::size_t bytes) {
+    // Can't free the null object.
     if (obj == 0) return;
 
-    // TODO: When implementing transactions the below can't happen
-    // TODO: when in the same transaction.
+    // Check if the object we want to free is at the end of the memory map.
     if (obj + bytes == local_top) {
+        // If it is we just decrease the top. This will not be possible across
+        // transactions!
         local_top -= bytes;
 
+        // Now if the last free block is now at the end of the memory map, we
+        // can decrease the local top even more.
         if (last_free_block.obj != 0 &&
             last_free_block.obj + last_free_block.size == local_top) {
 
@@ -62,23 +70,39 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
         return;
     }
 
+    // Now check if we have a cached block.
     if (last_free_block.obj != 0) {
-        // Merge with last_free_block is adjacent.
-        const bool lsb_is_before = last_free_block.obj + last_free_block.size == obj;
+        // Check is the last free block is located before the block we want to
+        // free.
+        const bool lsb_is_before =
+            last_free_block.obj + last_free_block.size == obj;
+
+        // Check is the last free block is located after the block we want to
+        // free.
         const bool lsb_is_after = obj + bytes == last_free_block.obj;
 
+        // In both cases we can merge the two blocks by increasing the size of
+        // the last free block.
         if (lsb_is_before || lsb_is_after) {
             last_free_block.size += bytes;
 
+            // If last free block is located after the block we want to free,
+            // the merged last free block must now be at the same offset as
+            // the block we want to free.
             if (lsb_is_after) last_free_block.obj = obj;
 
             return;
         }
 
-        // Otherwise, it will get replaced.
+        // If last free block was not adjacent to the block we want to free,
+        // we need to insert the last free block into the list of free blocks,
+        // as the new last free flock will be the block we are trying to free.
         insert_block_descriptor(last_free_block.obj, last_free_block.size);
     }
 
+    // At this point, our block was not located at the end of the memory map and
+    // either the last free block was not adjacent or it did not exist at all.
+    // Either way we last free block can be overwritten.
     last_free_block.obj = obj;
     last_free_block.size = bytes;
 }
@@ -87,13 +111,14 @@ Ref<Allocator::BlockDescriptor>
 Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
     Ref<BlockDescriptor> block_descriptor = 0;
 
+    // Check if we have a block descriptor that can be reused.
     if (unused_block_descriptor_list != 0) {
         block_descriptor = unused_block_descriptor_list;
         unused_block_descriptor_list =
             unused_block_descriptor_list->next;
     }
+    // If not we allocate a new block descriptor
     else {
-        // Allocate a new block descriptor
         const size_t free_size = memory_map_size - local_top;
         // TODO: Temp until we can resize the memory map
         if (block_size > free_size)
@@ -111,6 +136,7 @@ Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
 }
 
 void Allocator::insert_block_descriptor(Object obj, std::size_t block_size) {
+    // Get a block descriptor and simply insert it to the list of free blocks.
     Ref<BlockDescriptor> new_list =
         new_block_descriptor(obj, block_size);
 
@@ -123,16 +149,21 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     if (block_descriptor_list == 0)
         return 0;
 
+    // Used to remember what block fits the requirements best.
     Ref<BlockDescriptor> best_fit_prev = 0;
     Ref<BlockDescriptor> best_fit = 0;
 
+    // Used to iterate through the block descriptor list.
     Ref<BlockDescriptor> prev_descriptor = 0;
     Ref<BlockDescriptor> current_descriptor = block_descriptor_list;
 
-    // Find the best fitting block.
+    // Iterate through the block descriptor list.
     while (current_descriptor != 0) {
         const std::size_t descr_block_size = current_descriptor->block.size;
 
+        // If the block descriptor points to a block that contains enough space
+        // and this space is smaller than the best fit we have found so far,
+        // we can update best fit.
         if (block_size <= descr_block_size &&
             (best_fit == 0 || descr_block_size < best_fit->block.size)) {
 
@@ -147,9 +178,10 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
         current_descriptor = current_descriptor->next;
     }
 
-    // Found no fit at all.
+    // Iterated through every block descriptor and found every block too tight.
     if (best_fit == 0) return 0;
 
+    // Update the block found.
     Object offset = best_fit->block.obj;
 
     best_fit->block.obj += block_size;
@@ -165,11 +197,11 @@ Object Allocator::delete_block_descriptor(std::size_t block_size) {
     best_fit->next = unused_block_descriptor_list;
     unused_block_descriptor_list = best_fit;
 
+    // If the block did not fit perfectly, the remaining space is cached.
     Block block_left = best_fit->block;
 
-    // If the block that best_fit pointed to is not empty it becomes the
-    // new last freed block
     if (block_left.size != 0) {
+        // Send the last cached block to the list of free blocks.
         if (last_free_block.obj != 0) {
             insert_block_descriptor(last_free_block.obj, last_free_block.size);
         }
