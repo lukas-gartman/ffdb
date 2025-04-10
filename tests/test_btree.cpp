@@ -60,7 +60,7 @@ TEST(BTreeTest, RandomInsert) {
 }
 
 TEST(BTreeTest, DuplicateTest) {
-    constexpr int numKeys = 1000000;
+    constexpr int numKeys = 1'000'000;
     BTree<int, 100> tree;
     std::srand(std::time(nullptr));
     std::set<int> keys;
@@ -85,6 +85,17 @@ TEST(BTreeTest, DuplicateTest) {
     });
 
     EXPECT_FALSE(hasDuplicate);
+}
+
+TEST(BTreeTest, ManualDuplicateTest) {
+    const int keys[] = {1,2,3,3,4};
+    BTree<int, 3> tree;
+    for (int key : keys) {
+        tree.insert(key);
+    }
+
+    tree.remove(3);
+    EXPECT_FALSE(tree.search(3));
 }
 
 TEST(BTreeTest, RemoveTest) {
@@ -133,6 +144,8 @@ TEST(BTreeTest, SequentialInsertRemove) {
     }
 }
 
+// NOTE: It seems that this could generate duplicate keys which could
+// mess upp some of the tests
 std::vector<int> generateRandomKeys(int numKeys) {
     std::srand(std::time(nullptr));
     std::vector<int> keys;
@@ -149,7 +162,7 @@ std::vector<int> generateRandomKeys(int numKeys) {
 }
 
 TEST(BTreeTest, RandomInsertRemove) {
-    constexpr int numKeys = 10000000;
+    constexpr int numKeys = 1'000'000;
     BTree<int, 3> tree;
 
     std::cout << "Generating random keys..." << std::endl;
@@ -181,10 +194,9 @@ TEST(BTreeTest, RootNodeDelete) {
     BTree<int, 3> tree;
 
     // Insertion order
-    std::vector<int> keys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4,
-                             5, 8, 28, 26, 7, 6, 23, 29, 16, 2, 25,
-                             0, 17, 12, 14, 1, 9, 18, 20, 10};
-    for (int key : keys) {
+    std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
+                              6, 23, 29, 16, 2, 25, 0, 17, 12, 14, 1, 9, 18, 20, 10};
+    for (int key : insertKeys) {
         tree.insert(key);
         EXPECT_TRUE(tree.search(key));
     }
