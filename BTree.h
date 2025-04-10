@@ -122,6 +122,8 @@ private:
                 --i;
             }
 
+            if (x->keys[i] == key) { return; } // Key already exists, do not insert
+
             // Insert the new key
             x->keys[i + 1] = key;
             x->n = x->n + 1;
