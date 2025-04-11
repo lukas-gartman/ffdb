@@ -35,4 +35,5 @@ add_executable(ffdb main.cpp
         allocator.h
         DBState.h
         BTree.h
+        Synch.h
 )
