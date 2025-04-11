@@ -7,14 +7,14 @@ Allocator::Allocator(DBState* state, std::size_t memory_map_size):
     state(state),
     memory_map_size(memory_map_size),
     local_top(state->top),
-    last_free_block({0, 0}),
     block_descriptor_list(state->free_list),
-    unused_block_descriptor_list(state->free_descriptors) {}
+    unused_block_descriptor_list(state->free_descriptors),
+    last_free_block({0, 0}) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
     Object obj;
 
-    // Try using the last free block.
+    // Check if there is a free block cached that can be used.
     if (last_free_block.obj != 0 &&
         last_free_block.size >= bytes) {
 

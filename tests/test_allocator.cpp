@@ -48,6 +48,7 @@ TEST(AllocatorTest, MallocTestSeq) {
 
     Allocator alloc(alloc_state,
         mm_state.memory_map_size - sizeof(DBState));
+
     Ref<uint8_t> d1 = alloc.malloc<uint8_t>();
     Ref<uint32_t> d2 = alloc.malloc<uint32_t>();
     Ref<uint16_t> d3 = alloc.malloc<uint16_t>();
