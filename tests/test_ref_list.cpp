@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <cstdint>
-#include "../ref_list.h"
+#include "../src/ref_list.h"
 
 static const std::size_t PAGE_SIZE = 4096;
 

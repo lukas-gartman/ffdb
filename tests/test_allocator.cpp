@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <cstdint>
-#include "../allocator.h" // Should include typedefs.h
+#include "../src/allocator.h" // Should include typedefs.h
 
 static const std::size_t PAGE_SIZE = 4096;
 
