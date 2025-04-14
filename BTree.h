@@ -26,9 +26,6 @@ template <Comparable T, int t>
 class Node;
 
 template <Comparable T, int t>
-inline const Ref<Node<T, t>> REF_NULL = Ref<Node<T, t>>(0);
-
-template <Comparable T, int t>
 class Node {
 private:
     T keys[2*t-1];
@@ -42,7 +39,7 @@ public:
     //         keys[i] = T();
     //     }
     //     for (int i = 0; i < 2*t; ++i) {
-    //         children[i] = REF_NULL<T, t>;
+    //         children[i] = NULL;
     //     }
     // }
 
@@ -60,8 +57,8 @@ private:
         node->isLeaf = isLeaf;
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) node->keys[i] = T();
-        for (int i = 0; i < 2*t;   ++i) node->children[i] = REF_NULL<T, t>;
-        
+        for (int i = 0; i < 2*t;   ++i) node->children[i] = NULL;
+
         return node;
     }
 
@@ -77,7 +74,7 @@ private:
         }
 
         return i < x->n && key == x->keys[i] ? x // Key found
-            : x->isLeaf ? REF_NULL<T, t> // Key not found
+            : x->isLeaf ? NULL // Key not found
             : search(x->children[i], key); // Search in the child
     }
 
@@ -204,8 +201,8 @@ private:
         // assert(parent != nullptr);
         // assert(i >= 0 && i <= parent->n);
 
-        Ref<Node<T, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL<T, t>;
-        Ref<Node<T, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL<T, t>;
+        Ref<Node<T, t>> leftSibling = i != 0 ? parent->children[i - 1] : NULL;
+        Ref<Node<T, t>> rightSibling = i != parent->n ? parent->children[i + 1] : NULL;
 
         // Move a key from an immediate sibling if it has enough keys
         if (leftSibling && leftSibling->n >= t) {
@@ -443,7 +440,7 @@ private:
     }
 
     void deleteNode(Ref<Node<T, t>> node) {
-        if (node == REF_NULL<T, t>) return;
+        if (node == NULL) return;
 
         if (!node->isLeaf) {
             for (int i = 0; i <= node->n; i++) {
@@ -455,7 +452,7 @@ private:
 
     template <typename Func>
     void traverseNode(Ref<Node<T, t>> node, Func& callback) {
-        if (node == REF_NULL<T, t>) { return; }
+        if (node == NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
@@ -472,7 +469,7 @@ private:
     }
 
     void printNode(Ref<Node<T, t>> node, const std::string &path) {
-        if (node == REF_NULL<T, t>) { return; }
+        if (node == NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
@@ -487,19 +484,19 @@ private:
     }
 
 public:
-    explicit BTree(Allocator *alloc) : root(REF_NULL<T, t>) {
+    explicit BTree(Allocator *alloc) : root(NULL) {
         allocator = alloc;
         root = createNode(true);
     }
     ~BTree() { deleteNode(root); }
 
     Ref<Node<T, t>> search(T key) {
-        return root == REF_NULL<T, t> ? REF_NULL<T, t> : search(root, key);
+        return root == NULL ? NULL : search(root, key);
     }
 
     void insert(T key) {
         Ref<Node<T, t>> r = root;
-        if (r == REF_NULL<T, t>) {
+        if (r == NULL) {
             root = createNode(true);
             root->keys[0] = key;
             root->n = 1;
@@ -526,7 +523,7 @@ public:
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
             Ref<Node<T, t>> tmp = root;
-            root = root->isLeaf ? REF_NULL<T, t> : root->children[0];
+            root = root->isLeaf ? NULL : root->children[0];
             freeNode(tmp);
         }
     }
