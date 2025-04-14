@@ -487,7 +487,10 @@ private:
     }
 
 public:
-    explicit BTree(Allocator *alloc) : root(createNode(true)), allocator(alloc) { }
+    explicit BTree(Allocator *alloc) : root(REF_NULL<T, t>) {
+        allocator = alloc;
+        root = createNode(true);
+    }
     ~BTree() { deleteNode(root); }
 
     Ref<Node<T, t>> search(T key) {
