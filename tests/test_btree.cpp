@@ -31,8 +31,8 @@ struct MockBlockDescriptor {
     Ref<MockBlockDescriptor> mbd3;
 };
 
-Allocator createAllocator() {
-    MemoryMapState mm_state(1024);
+TEST(BTreeTest, InsertTest) {
+    MemoryMapState mm_state(7*PAGE_SIZE);
 
     current_base = (unsigned char *) mm_state.memory_map;
 
@@ -48,11 +48,6 @@ Allocator createAllocator() {
     Allocator alloc(alloc_state,
         mm_state.memory_map_size - sizeof(Allocator::State));
 
-    return alloc;
-}
-
-TEST(BTreeTest, InsertTest) {
-    Allocator alloc = createAllocator();
     BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
