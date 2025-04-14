@@ -8,7 +8,12 @@
 
 #include "allocator.h"
 
-// Ensure the key type is comparable to other keys
+/**
+ * \brief Ensures that the key type is comparable to other keys.
+ * \details This concept checks that the type `T` supports comparison operators
+ *          such as `<`, `<=`, `>`, `>=`, `==`, and `!=`, all of which must return
+ *          a value convertible to `bool`.
+ */
 template <typename T>
 concept Comparable = requires(T a, T b) {
     { a < b }  -> std::convertible_to<bool>;
@@ -27,6 +32,15 @@ class Node;
 
 #define REF_NULL Ref<Node<T, t>>::null()
 
+/**
+ * \class Node
+ * \brief Represents a node in the B-Tree.
+ * \details Each node contains an array of keys, an array of child references,
+ *          the number of keys, and whether the node is a leaf.
+ *
+ * \tparam T The type of keys stored in the node. Must satisfy the Comparable concept.
+ * \tparam t The minimum degree of the B-Tree. Determines the maximum and minimum number of keys and children.
+ */
 template <Comparable T, int t>
 class Node {
 private:
@@ -34,17 +48,35 @@ private:
     Ref<Node> children[2*t];
     int n; // Number of keys in the node
     bool isLeaf;
-
 public:
     friend class BTree<T, t>;
 };
 
+/**
+ * \class BTree
+ * \brief A B-Tree implementation based on CLRS's definition.
+ * \details Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8).
+ *
+ * \tparam T The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
+ * \tparam t The minimum degree of the B-Tree. It defines:
+ *           - The minimum number of keys in a non-root node (`t - 1`).
+ *           - The maximum number of keys in any node (`2 * t - 1`).
+ *           - The minimum number of children in a non-leaf, non-root node (`t`).
+ *           - The maximum number of children in any node (`2 * t`).
+ */
 template <Comparable T, int t>
 class BTree {
 private:
     Ref<Node<T, t>> root;
     Allocator *allocator;
 
+    /**
+     * \brief Creates a new node in the B-Tree.
+     * \details Allocates memory for a new node, initializes its properties, and sets all keys and children to default values.
+     *
+     * \param isLeaf A boolean indicating whether the node is a leaf node.
+     * \return A reference to the newly created node.
+     */
     Ref<Node<T, t>> createNode(bool isLeaf) {
         Ref<Node<T, t>> node = allocator->malloc<Node<T, t>>();
         node->isLeaf = isLeaf;
@@ -55,10 +87,26 @@ private:
         return node;
     }
 
+    /**
+     * \brief Frees a node in the B-Tree.
+     * \details This function deallocates the memory associated with a given node using the allocator.
+     *
+     * \param node The reference to the node to be freed.
+     */
     void freeNode(Ref<Node<T, t>> node) {
         allocator->free(node);
     }
 
+    /**
+     * \brief Searches for a key in the B-Tree.
+     * \details This function recursively searches for a key in the B-Tree starting from the given node.
+     *          If the key is found, it returns the node containing the key. If the key is not found,
+     *          it returns a null reference.
+     *
+     * \param x The node to start the search from.
+     * \param key The key to search for in the B-Tree.
+     * \return A reference to the node containing the key, or REF_NULL if the key is not found.
+     */
     Ref<Node<T, t>> search(Ref<Node<T, t>> x, T key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
@@ -71,6 +119,14 @@ private:
             : search(x->children[i], key); // Search in the child
     }
 
+    /**
+     * \brief Splits a full child node into two nodes.
+     * \details This function splits the child node `y` of the node `x` at index `i` into two nodes.
+     *          The middle key of `y` is moved up to `x`, and the right half of `y` is moved into a new node `z`.
+     *
+     * \param x The parent node containing the child to be split.
+     * \param i The index of the child node in `x` to be split.
+     */
     void splitChild(Ref<Node<T, t>> x, int i) {
         Ref<Node<T, t>> y = x->children[i];
         Ref<Node<T, t>> z = createNode(y->isLeaf);
@@ -112,6 +168,16 @@ private:
         ++x->n;
     }
 
+    /**
+     * \brief Inserts a key into a non-full node.
+     * \details This function handles the insertion of a key into a node that is not full.
+     *          If the node is a leaf, the key is directly inserted into the correct position.
+     *          If the node is an internal node, the function determines the appropriate child
+     *          to insert the key into, splitting the child if necessary.
+     *
+     * \param x The node into which the key is to be inserted.
+     * \param key The key to be inserted.
+     */
     void insertNonFull(Ref<Node<T, t>> x, T key) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
@@ -150,6 +216,15 @@ private:
         }
     }
 
+    /**
+     * \brief Retrieves the in-order predecessor of a key.
+     * \details This function finds the largest key in the left subtree of the node at the given index.
+     *          It traverses to the rightmost child of the left child to locate the predecessor.
+     *
+     * \param node The node containing the key whose predecessor is to be found.
+     * \param i The index of the key in the node.
+     * \return The in-order predecessor key.
+     */
     T getInOrderPredecessor(Ref<Node<T, t>> node, int i) {
         // Find the rightmost child of the left child
         Ref<Node<T, t>> current = node->children[i];
@@ -159,6 +234,15 @@ private:
         return current->keys[current->n - 1];
     }
 
+    /**
+     * \brief Retrieves the in-order successor of a key.
+     * \details This function finds the smallest key in the right subtree of the node at the given index.
+     *          It traverses to the leftmost child of the right child to locate the successor.
+     *
+     * \param node The node containing the key whose successor is to be found.
+     * \param i The index of the key in the node.
+     * \return The in-order successor key.
+     */
     T getInOrderSuccessor(Ref<Node<T, t>> node, int i) {
         // Find the leftmost child of the right child
         Ref<Node<T, t>> current = node->children[i + 1];
@@ -168,6 +252,15 @@ private:
         return current->keys[0];
     }
 
+    /**
+     * \brief Rebalances a node.
+     * \details This function ensures that a node satisfies the minimum degree property.
+     *          If a child node has fewer than the required number of keys, it attempts to rebalance
+     *          the node by borrowing a key from an immediate sibling or merging with a sibling.
+     *
+     * \param parent The parent node containing the child to be rebalanced.
+     * \param i The index of the child node in the parent node's children array.
+     */
     void rebalanceNode(Ref<Node<T, t>> parent, int i) {
         Ref<Node<T, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL;
         Ref<Node<T, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
@@ -188,6 +281,15 @@ private:
         }
     }
 
+    /**
+     * \brief Moves a key and child from the left sibling to the current child.
+     * \details This function rebalances a node by moving a key from the left sibling
+     *          to the parent and a key from the parent to the current child. It also
+     *          moves the last child of the left sibling to the current child.
+     *
+     * \param parent The parent node containing the child and its left sibling.
+     * \param i The index of the current child in the parent's children array.
+     */
     void moveKeyAndChildFromLeftSibling(Ref<Node<T, t>> parent, int i) {
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> leftSibling = parent->children[i - 1];
@@ -220,6 +322,15 @@ private:
         leftSibling->n -= 1;
     }
 
+    /**
+     * \brief Moves a key and child from the right sibling to the current child.
+     * \details This function rebalances a node by moving a key from the right sibling
+     *          to the parent and a key from the parent to the current child. It also
+     *          moves the first child of the right sibling to the current child.
+     *
+     * \param parent The parent node containing the child and its right sibling.
+     * \param i The index of the current child in the parent's children array.
+     */
     void moveKeyAndChildFromRightSibling(Ref<Node<T, t>> parent, int i) {
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> rightSibling = parent->children[i + 1];
@@ -251,6 +362,15 @@ private:
         rightSibling->n -= 1;
     }
 
+    /**
+     * \brief Merges a child node with its right sibling.
+     * \details This function merges the child node at index `i` with its right sibling in the parent node.
+     *          The key from the parent node that separates the two children is moved down into the merged node.
+     *          The right sibling is then deallocated, and the parent node is updated to reflect the merge.
+     *
+     * \param parent The parent node containing the child and its right sibling.
+     * \param i The index of the child node in the parent's children array.
+     */
     void merge(Ref<Node<T, t>> parent, int i) {
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> rightSibling = parent->children[i + 1];
@@ -287,6 +407,15 @@ private:
         freeNode(rightSibling);
     }
 
+    /**
+     * \brief Removes a key from a non-leaf node.
+     * \details This function handles the removal of a key from a non-leaf node. Depending on the state of the
+     *          child nodes, it either replaces the key with its in-order predecessor or successor, or merges
+     *          the child nodes if necessary.
+     *
+     * \param parent The parent node containing the key to be removed.
+     * \param i The index of the key in the parent node's keys array.
+     */
     void removeFromNonLeaf(Ref<Node<T, t>> parent, int i) {
         T key = parent->keys[i];
         Ref<Node<T, t>> leftChild = parent->children[i];
@@ -312,6 +441,14 @@ private:
         }
     }
 
+    /**
+     * \brief Removes a key from a leaf node.
+     * \details This function handles the removal of a key from a leaf node by shifting
+     *          the keys to the left to overwrite the key at the specified index.
+     *
+     * \param node The leaf node from which the key is to be removed.
+     * \param i The index of the key to be removed in the node's keys array.
+     */
     void removeFromLeaf(Ref<Node<T, t>> node, const int i) {
         // Overwrite key by shifting keys to the left
         for (int j = i + 1; j < node->n; ++j) {
@@ -321,6 +458,15 @@ private:
         --node->n; // Reduce the key count
     }
 
+    /**
+     * \brief Removes a key from the B-Tree.
+     * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
+     *          If the key exists in the current node, it is removed directly. Otherwise, the function searches
+     *          for the key in the appropriate child node, rebalancing the tree if necessary.
+     *
+     * \param node The node from which the key is to be removed.
+     * \param key The key to be removed from the B-Tree.
+     */
     void remove(Ref<Node<T, t>> node, T key) {
         // Find the first key greater than or equal to key
         int i = 0;
@@ -358,6 +504,13 @@ private:
         }
     }
 
+    /**
+     * \brief Recursively deletes a node and its children from the B-Tree.
+     * \details This function deallocates the memory associated with a given node and all its child nodes.
+     *          It ensures that all nodes in the subtree rooted at the given node are properly freed.
+     *
+     * \param node The reference to the node to be deleted. If the node is null, the function does nothing.
+     */
     void deleteNode(Ref<Node<T, t>> node) {
         if (node == REF_NULL) return;
 
@@ -369,6 +522,16 @@ private:
         freeNode(node);
     }
 
+    /**
+     * \brief Traverses the nodes of the B-Tree in-order and applies a callback function to each key.
+     * \details This function performs an in-order traversal of the B-Tree, starting from the given node.
+     *          For each key encountered during the traversal, the provided callback function is invoked.
+     *          If the node is not a leaf, the function recursively traverses its children.
+     *
+     * \tparam Func The type of the callback function. It must be callable with a single argument of type `T`.
+     * \param node The reference to the node to start the traversal from.
+     * \param callback The callback function to apply to each key during the traversal.
+     */
     template <typename Func>
     void traverseNode(Ref<Node<T, t>> node, Func& callback) {
         if (node == REF_NULL) { return; }
@@ -387,6 +550,14 @@ private:
         }
     }
 
+    /**
+     * \brief Recursively prints the keys of the B-Tree nodes.
+     * \details This function performs a recursive traversal of the B-Tree, starting from the given node.
+     *          It prints the keys of each node and their respective paths in the tree.
+     *
+     * \param node The reference to the node to start printing from.
+     * \param path A string representing the path to the current node in the tree.
+     */
     void printNode(Ref<Node<T, t>> node, const std::string &path) {
         if (node == REF_NULL) { return; }
 
@@ -403,16 +574,39 @@ private:
     }
 
 public:
+    /**
+     * \brief Constructs a BTree with a given allocator.
+     * \details Initializes the BTree with the provided memory allocator and creates an empty root node.
+     *
+     * \param alloc A pointer to the memory allocator used for node allocation.
+     */
     explicit BTree(Allocator *alloc) : root(REF_NULL) {
         allocator = alloc;
         root = createNode(true);
     }
     ~BTree() { deleteNode(root); }
 
+    /**
+     * \brief Searches for a key in the B-Tree.
+     * \details This function searches for a key starting from the root node of the B-Tree.
+     *          If the key is found, it returns a reference to the node containing the key.
+     *          If the key is not found, it returns a null reference.
+     *
+     * \param key The key to search for in the B-Tree.
+     * \return A reference to the node containing the key, or REF_NULL if the key is not found.
+     */
     Ref<Node<T, t>> search(T key) {
         return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
+    /**
+     * \brief Inserts a key into the B-Tree.
+     * \details This function inserts a key into the B-Tree, ensuring that the tree maintains its properties.
+     *          If the root node is full, it is split, and a new root is created. The key is then inserted
+     *          into the appropriate position in the tree.
+     *
+     * \param key The key to be inserted into the B-Tree.
+     */
     void insert(T key) {
         Ref<Node<T, t>> r = root;
         if (r == REF_NULL) {
@@ -434,6 +628,14 @@ public:
         }
     }
 
+    /**
+     * \brief Removes a key from the B-Tree.
+     * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
+     *          If the root node becomes empty after the removal, it is cleaned up and replaced with its first child
+     *          (if it exists) or set to null if the tree becomes empty.
+     *
+     * \param key The key to be removed from the B-Tree.
+     */
     void remove(T key) {
         if (!root) { return; }
 
@@ -447,6 +649,24 @@ public:
         }
     }
 
+    /**
+     * \brief Traverses the B-Tree and applies a callback function to each key.
+     * \details This function performs an in-order traversal of the B-Tree, starting from the root node.
+     *          For each key encountered during the traversal, the provided callback function is invoked.
+     *          If the tree is empty, the function does nothing.
+     *
+     * \tparam Func The type of the callback function. It must be callable with a single argument of type `T`.
+     * \param callback The callback function to apply to each key during the traversal.
+     *
+     * \note The callback function should not modify the structure of the B-Tree.
+     *
+     * \code{.cpp}
+     * // Example usage: Print all keys in the B-Tree
+     * tree.traverse([](int key) {
+     *     std::cout << key << " ";
+     * });
+     * \endcode
+     */
     template <typename Func>
     void traverse(Func callback) {
         if (root) {
@@ -454,6 +674,10 @@ public:
         }
     }
 
+    /**
+     * \brief Prints the structure of the B-Tree.
+     * \details This function prints the keys and structure of the B-Tree starting from the root node.
+     */
     void print() {
         if (root) {
             printNode(root, std::string("Root"));
