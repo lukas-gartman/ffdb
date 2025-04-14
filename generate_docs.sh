@@ -17,7 +17,7 @@ fi
 if [ ! -d "docs/doxygen-awesome" ]; then
     echo "Downloading doxygen-awesome-css..."
     curl -sSL https://github.com/jothepro/doxygen-awesome-css/archive/refs/tags/v2.3.4.zip -o temp.zip
-    unzip -o temp.zip -d docs
+    unzip -o temp.zip -d docs > /dev/null
     mv docs/doxygen-awesome-css-2.3.4 docs/doxygen-awesome
     rm temp.zip
 fi
