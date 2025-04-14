@@ -3,17 +3,17 @@ project(ffdb)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(ffdb main.cpp
-        FFDB.cpp
-        FFDB.h
-        buddy_allocator.cpp
-        buddy_allocator.h
-        typedefs.cpp
-        typedefs.h
-        allocator.cpp
-        allocator.h
-        BTree.h
-        ref_list.h
+add_executable(ffdb src/main.cpp
+        src/FFDB.cpp
+        src/FFDB.h
+        src/buddy_allocator.cpp
+        src/buddy_allocator.h
+        src/typedefs.cpp
+        src/typedefs.h
+        src/allocator.cpp
+        src/allocator.h
+        src/BTree.h
+        src/ref_list.h
 )
 
 # Check if the googletest submodule exists
@@ -29,12 +29,12 @@ else()
             tests/test_allocator.cpp
             tests/test_ref_list.cpp
             tests/test_btree.cpp
-            typedefs.cpp
-            typedefs.h
-            allocator.cpp
-            allocator.h
-            BTree.h
-            ref_list.h
+            src/typedefs.cpp
+            src/typedefs.h
+            src/allocator.cpp
+            src/allocator.h
+            src/BTree.h
+            src/ref_list.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
