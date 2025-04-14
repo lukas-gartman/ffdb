@@ -43,6 +43,10 @@ public:
     }
 
     Object as_object() const { return offset; }
+
+    static Ref null() { return Ref(0); }
+
+    explicit operator bool() const { return offset != 0; }
 };
 
 #endif //TYPEDEFS_H

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../typedefs.h"
+#include "../src/typedefs.h"
 
 TEST(TypedefsTest, ExampleTest) {
     Object o = 0;

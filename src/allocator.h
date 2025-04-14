@@ -22,11 +22,13 @@ public:
 
     Allocator(State *state, std::size_t memory_map_size);
 
-    template <class A> Ref<A> malloc(const std::size_t extra_bytes = 0) {
+    template <class A>
+    Ref<A> malloc(const std::size_t extra_bytes = 0) {
         return malloc_internal(sizeof(A) + extra_bytes);
     }
 
-    template<class A> void free(Ref<A> obj, const std::size_t extra_bytes = 0) {
+    template<class A>
+    void free(Ref<A> obj, const std::size_t extra_bytes = 0) {
         free_internal(obj.as_object(), sizeof(A) + extra_bytes);
     }
 
