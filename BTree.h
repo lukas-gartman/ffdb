@@ -25,6 +25,8 @@ class BTree;
 template <Comparable T, int t>
 class Node;
 
+#define REF_NULL Ref<Node<T, t>>::null()
+
 template <Comparable T, int t>
 class Node {
 private:
@@ -34,15 +36,6 @@ private:
     bool isLeaf;
 
 public:
-    // explicit Node(const bool isLeaf) : n(0), isLeaf(isLeaf) {
-    //     for (int i = 0; i < 2*t-1; ++i) {
-    //         keys[i] = T();
-    //     }
-    //     for (int i = 0; i < 2*t; ++i) {
-    //         children[i] = NULL;
-    //     }
-    // }
-
     friend class BTree<T, t>;
 };
 
@@ -57,7 +50,7 @@ private:
         node->isLeaf = isLeaf;
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) node->keys[i] = T();
-        for (int i = 0; i < 2*t;   ++i) node->children[i] = NULL;
+        for (int i = 0; i < 2*t;   ++i) node->children[i] = REF_NULL;
 
         return node;
     }
@@ -74,16 +67,11 @@ private:
         }
 
         return i < x->n && key == x->keys[i] ? x // Key found
-            : x->isLeaf ? NULL // Key not found
+            : x->isLeaf ? REF_NULL // Key not found
             : search(x->children[i], key); // Search in the child
     }
 
     void splitChild(Ref<Node<T, t>> x, int i) {
-        // assert(x != nullptr);
-        // assert(i >= 0 && i <= x->n);
-        // assert(x->children[i] != nullptr);
-        // assert(x->children[i]->n == 2 * t - 1);
-
         Ref<Node<T, t>> y = x->children[i];
         Ref<Node<T, t>> z = createNode(y->isLeaf);
         z->n = t - 1;
@@ -122,17 +110,9 @@ private:
         // Insert the middle key of y into x
         x->keys[i] = middleKey;
         ++x->n;
-
-        // assert(x->n <= 2 * t - 1);
-        // assert(y->n == t - 1);
-        // assert(z->n == t - 1);
     }
 
     void insertNonFull(Ref<Node<T, t>> x, T key) {
-        // assert(x != nullptr);
-        // assert(x->n < 2 * t - 1);
-        // assert(x->isLeaf || x->children[0] != nullptr);
-
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->isLeaf) {
@@ -154,7 +134,6 @@ private:
             }
 
             ++i; // Increment i to find the child
-            // assert(x->children[i] != nullptr);
 
             // Split the child if it is full
             if (x->children[i]->n == 2*t - 1) {
@@ -172,10 +151,6 @@ private:
     }
 
     T getInOrderPredecessor(Ref<Node<T, t>> node, int i) {
-        // assert(node != nullptr);
-        // assert(i >= 0 && i < node->n);
-        // assert(node->children[i] != nullptr);
-
         // Find the rightmost child of the left child
         Ref<Node<T, t>> current = node->children[i];
         while (!current->isLeaf) {
@@ -185,10 +160,6 @@ private:
     }
 
     T getInOrderSuccessor(Ref<Node<T, t>> node, int i) {
-        // assert(node != nullptr);
-        // assert(i >= 0 && i < node->n);
-        // assert(node->children[i + 1] != nullptr);
-
         // Find the leftmost child of the right child
         Ref<Node<T, t>> current = node->children[i + 1];
         while (!current->isLeaf) {
@@ -198,11 +169,8 @@ private:
     }
 
     void rebalanceNode(Ref<Node<T, t>> parent, int i) {
-        // assert(parent != nullptr);
-        // assert(i >= 0 && i <= parent->n);
-
-        Ref<Node<T, t>> leftSibling = i != 0 ? parent->children[i - 1] : NULL;
-        Ref<Node<T, t>> rightSibling = i != parent->n ? parent->children[i + 1] : NULL;
+        Ref<Node<T, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL;
+        Ref<Node<T, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
 
         // Move a key from an immediate sibling if it has enough keys
         if (leftSibling && leftSibling->n >= t) {
@@ -221,15 +189,8 @@ private:
     }
 
     void moveKeyAndChildFromLeftSibling(Ref<Node<T, t>> parent, int i) {
-        // assert(parent != nullptr);
-        // assert(i > 0 && i <= parent->n);
-
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> leftSibling = parent->children[i - 1];
-
-        // assert(child != nullptr);
-        // assert(leftSibling != nullptr);
-        // assert(leftSibling->n >= t);
 
         // Shift keys right to make room for the key that we will take from parent
         for (int j = child->n - 1; j >= 0; --j) {
@@ -257,21 +218,11 @@ private:
         // Child gained a key and its left sibling lost one
         child->n += 1;
         leftSibling->n -= 1;
-
-        // assert(child->n <= 2 * t - 1);
-        // assert(leftSibling->n >= 0);
     }
 
     void moveKeyAndChildFromRightSibling(Ref<Node<T, t>> parent, int i) {
-        // assert(parent != nullptr);
-        // assert(i >= 0 && i < parent->n);
-
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> rightSibling = parent->children[i + 1];
-
-        // assert(child != nullptr);
-        // assert(rightSibling != nullptr);
-        // assert(rightSibling->n >= t);
 
         // Bring down the key from parent
         child->keys[child->n] = parent->keys[i];
@@ -298,22 +249,11 @@ private:
 
         child->n += 1;
         rightSibling->n -= 1;
-
-        // assert(child->n <= 2 * t - 1);
-        // assert(rightSibling->n >= 0);
     }
 
     void merge(Ref<Node<T, t>> parent, int i) {
-        // assert(parent != nullptr);
-        // assert(i >= 0 && i < parent->n);
-        // assert(parent->children[i] != nullptr);
-        // assert(parent->children[i + 1] != nullptr);
-
         Ref<Node<T, t>> child = parent->children[i];
         Ref<Node<T, t>> rightSibling = parent->children[i + 1];
-
-        // assert(child->n < t);
-        // assert(rightSibling->n < t);
 
         // Bring down the key from parent
         child->keys[t - 1] = parent->keys[i];
@@ -344,17 +284,10 @@ private:
         child->n += rightSibling->n + 1;
         --parent->n;
 
-        // assert(child->n <= 2 * t - 1);
-        // assert(parent->n >= 0);
-
         freeNode(rightSibling);
     }
 
     void removeFromNonLeaf(Ref<Node<T, t>> parent, int i) {
-        // assert(parent != nullptr);
-        // assert(parent->n >= t - 1 || root == parent);
-        // assert(parent->n > 0 && parent->n <= 2 * t - 1);
-
         T key = parent->keys[i];
         Ref<Node<T, t>> leftChild = parent->children[i];
         Ref<Node<T, t>> rightChild = parent->children[i + 1];
@@ -365,24 +298,18 @@ private:
             T predecessor = getInOrderPredecessor(parent, i);
             parent->keys[i] = predecessor;
             remove(leftChild, predecessor);
-            // assert(leftChild->n >= t - 1);
         } else if (rightChild->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
             T successor = getInOrderSuccessor(parent, i);
             parent->keys[i] = successor;
             remove(rightChild, successor);
-            // assert(rightChild->n >= t - 1);
         } else {
             // Both children have fewer than t keys so we need to merge the right child into
             // the left child before removing the key
             merge(parent, i);
-            // assert(leftChild->n >= t - 1);
             remove(leftChild, key);
-            // assert(leftChild->n >= t - 1);
         }
-
-        // assert(parent->n >= t - 1 || root == parent);
     }
 
     void removeFromLeaf(Ref<Node<T, t>> node, const int i) {
@@ -392,14 +319,9 @@ private:
         }
 
         --node->n; // Reduce the key count
-
-        // assert(node->n >= 0 && node->n < 2*t - 1);
     }
 
     void remove(Ref<Node<T, t>> node, T key) {
-        // assert(node != nullptr);
-        // assert(node->n > 0 && node->n < 2 * t);
-
         // Find the first key greater than or equal to key
         int i = 0;
         while (i < node->n && node->keys[i] < key) {
@@ -421,7 +343,6 @@ private:
             // Flag which later indicates if we need to process the last child
             bool isLastChild = i == node->n;
 
-            // assert(child != nullptr);
             if (child->n < t) {
                 rebalanceNode(node, i);
             }
@@ -430,17 +351,15 @@ private:
             // after re-balancing, search for the key in the previous child instead
             if (isLastChild && i > node->n) {
                 Ref<Node<T, t>> prevChild = node->children[i - 1];
-                // assert(prevChild != nullptr);
                 remove(prevChild, key);
             } else { // Search in the child
-                // assert(child != nullptr);
                 remove(child, key);
             }
         }
     }
 
     void deleteNode(Ref<Node<T, t>> node) {
-        if (node == NULL) return;
+        if (node == REF_NULL) return;
 
         if (!node->isLeaf) {
             for (int i = 0; i <= node->n; i++) {
@@ -452,7 +371,7 @@ private:
 
     template <typename Func>
     void traverseNode(Ref<Node<T, t>> node, Func& callback) {
-        if (node == NULL) { return; }
+        if (node == REF_NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
@@ -469,7 +388,7 @@ private:
     }
 
     void printNode(Ref<Node<T, t>> node, const std::string &path) {
-        if (node == NULL) { return; }
+        if (node == REF_NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
@@ -484,19 +403,19 @@ private:
     }
 
 public:
-    explicit BTree(Allocator *alloc) : root(NULL) {
+    explicit BTree(Allocator *alloc) : root(REF_NULL) {
         allocator = alloc;
         root = createNode(true);
     }
     ~BTree() { deleteNode(root); }
 
     Ref<Node<T, t>> search(T key) {
-        return root == NULL ? NULL : search(root, key);
+        return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
     void insert(T key) {
         Ref<Node<T, t>> r = root;
-        if (r == NULL) {
+        if (r == REF_NULL) {
             root = createNode(true);
             root->keys[0] = key;
             root->n = 1;
@@ -523,7 +442,7 @@ public:
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
             Ref<Node<T, t>> tmp = root;
-            root = root->isLeaf ? NULL : root->children[0];
+            root = root->isLeaf ? REF_NULL : root->children[0];
             freeNode(tmp);
         }
     }
