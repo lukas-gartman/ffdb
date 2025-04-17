@@ -1,9 +1,9 @@
-#include "allocator.h"
+#include "Allocator.h"
 
 #include <cassert>
 #include <stdexcept>
 
-Allocator::Allocator(DBState* state, std::size_t memory_map_size):
+Allocator::Allocator(MemState* state, std::size_t memory_map_size):
     state(state),
     memory_map_size(memory_map_size),
     local_top(state->top),

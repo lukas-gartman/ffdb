@@ -4,7 +4,6 @@
 #include <pthread.h>
 #include <stdexcept>
 
-
 /* Wrapper class for pthread mutex for use in memory mapped files. Let addr
  * point to an address in a memory mapped file, we can access the mutex like
  * this:

@@ -1,14 +1,14 @@
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
 
-#include "typedefs.h"
-#include "DBState.h"
+#include "Typedefs.h"
+#include "MemState.h"
 
 #include <stdexcept>
 
 class Allocator {
 public:
-    Allocator(DBState *state, std::size_t memory_map_size);
+    Allocator(MemState *state, std::size_t memory_map_size);
 
     template <class A> Ref<A> malloc(const std::size_t extra_bytes = 0) {
         return malloc_internal(sizeof(A) + extra_bytes);
@@ -29,7 +29,7 @@ private:
         Ref<BlockDescr> next;
     };
 
-    DBState *state;
+    MemState *state;
     std::size_t memory_map_size;
 
     Object local_top;

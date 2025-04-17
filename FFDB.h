@@ -1,23 +1,19 @@
 #ifndef FFDB_H
 #define FFDB_H
-#include "buddy_allocator.h"
+
+#include "Allocator.h"
+#include "MemoryMapping.h"
 
 #include <cstddef>
 
 class FFDB {
 private:
-    int fd;
-    size_t page_size;
-    size_t memory_map_size;
-    unsigned char *base;
-    const char *filepath;
-
-    BuddyAllocator *a;
+    Allocator *alloc;
+    MemoryMapping *mem_mapping;
 
 public:
-    FFDB(const char *filepath, int flags, int mode, size_t init_size);
-
-    ~FFDB();
+    FFDB(std::string filepath, int flags, int mode, size_t init_size);
 };
+
 
 #endif //FFDB_H
