@@ -14,25 +14,26 @@ else()
             tests/test_main.cpp
             tests/test_allocator.cpp
             tests/test_btree.cpp
-            Typedefs.cpp
-            Typedefs.h
-            Allocator.cpp
-            Allocator.h
-            BTree.h
+            src/Typedefs.cpp
+            src/Typedefs.h
+            src/Allocator.cpp
+            src/Allocator.h
+            src/BTree.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
 
-add_executable(ffdb main.cpp
-        FFDB.cpp
-        FFDB.h
-        Typedefs.cpp
-        Typedefs.h
-        Allocator.cpp
-        Allocator.h
-        MemState.h
-        BTree.h
-        Synch.h
-        MemoryMapping.h
-        MemoryMapping.cpp
+add_executable(ffdb src/main.cpp
+        src/FFDB.cpp
+        src/FFDB.h
+        src/Typedefs.cpp
+        src/Typedefs.h
+        src/Allocator.cpp
+        src/Allocator.h
+        src/MemState.h
+        src/BTree.h
+        src/Synch.h
+        src/MemoryMapping.h
+        src/MemoryMapping.cpp
+        src/Transaction.h
 )

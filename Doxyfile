@@ -1,0 +1,45 @@
+PROJECT_NAME           = "FFDB"
+PROJECT_BRIEF          = "Master Thesis at the University of Gothenburg and Chalmers University"
+PROJECT_LOGO           =
+PROJECT_ICON           =
+
+INPUT                  = src/
+RECURSIVE              = YES
+OUTPUT_DIRECTORY       = docs
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+OUTPUT_LANGUAGE        = English
+
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = YES
+TREEVIEW_WIDTH         = 260
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+
+HAVE_DOT               = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = src/
+
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+
+DOXYFILE_ENCODING      = UTF-8
+
+HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome/doxygen-awesome.css
+HTML_EXTRA_FILES       = docs/doxygen-awesome/doxygen-awesome-darkmode-toggle.js \
+                         docs/doxygen-awesome/doxygen-awesome-fragment-copy-button.js \
+                         docs/doxygen-awesome/doxygen-awesome-paragraph-link.js \
+                         docs/doxygen-awesome/doxygen-custom/toggle-alternative-theme.js \
+                         docs/doxygen-awesome/doxygen-awesome-interactive-toc.js \
+                         docs/doxygen-awesome/doxygen-awesome-tabs.js

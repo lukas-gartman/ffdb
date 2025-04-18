@@ -22,6 +22,7 @@ private:
     struct Block {
         Object obj;
         std::size_t size;
+        std::size_t txn_id;
     };
 
     struct BlockDescr {
