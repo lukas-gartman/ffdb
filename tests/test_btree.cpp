@@ -47,7 +47,7 @@ TEST(BTreeTest, InsertTest) {
     Allocator alloc(alloc_state,
         mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -84,7 +84,7 @@ TEST(BTreeTest, SequentialInsertTest) {
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
     constexpr int numKeys = 5000000;
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
     for (int i = 1; i <= numKeys; ++i) {
         tree.insert(i);
     }
@@ -110,7 +110,7 @@ TEST(BTreeTest, RandomInsert) {
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
     constexpr int numKeys = 50;
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -142,7 +142,7 @@ TEST(BTreeTest, DuplicateTest) {
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
     constexpr int numKeys = 1'000'000;
-    BTree<int, 100> tree(&alloc);
+    BTree::BTree<int, 100> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -184,7 +184,7 @@ TEST(BTreeTest, ManualDuplicateTest) {
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
     const int keys[] = {1, 2, 3, 3, 4};
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
     for (int key : keys) {
         tree.insert(key);
     }
@@ -208,7 +208,7 @@ TEST(BTreeTest, RemoveTest) {
 
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -254,7 +254,7 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
 
     constexpr int numKeys = 1000000;
     for (int i = numKeys; i >= numKeys; --i) {
@@ -299,7 +299,7 @@ TEST(BTreeTest, RandomInsertRemove) {
 
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
 
     constexpr int numKeys = 1'000'000;
     std::cout << "Generating random keys..." << std::endl;
@@ -342,7 +342,7 @@ TEST(BTreeTest, RootNodeDelete) {
 
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
 
     // Insertion order
     std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
@@ -392,7 +392,7 @@ TEST(BTreeTest, IncrementalInsertDelete) {
 
     Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
 
-    BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(&alloc);
 
     const int start = 44;
     const int numKeys = 50;

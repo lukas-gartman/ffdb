@@ -5,8 +5,9 @@
 #define BTREE_H
 
 #include <concepts>
-
 #include "allocator.h"
+
+namespace BTree {
 
 /**
  * \brief Ensures that the key type is comparable to other keys.
@@ -685,5 +686,6 @@ public:
         }
     }
 };
+}
 
 #endif //BTREE_H
