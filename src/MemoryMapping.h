@@ -2,6 +2,7 @@
 #define MEMORYMAPPING_H
 
 #include "MemState.h"
+#include "Transaction.h"
 
 class MemoryMapping {
 private:
@@ -10,7 +11,7 @@ private:
     unsigned char *base;
     std::string filepath;
 
-    static ssize_t calc_mem_map_size(size_t init_size) ;
+    static size_t calc_mem_map_size(size_t init_size);
 
     void cleanup() noexcept;
 
@@ -29,7 +30,20 @@ public:
 
     ~MemoryMapping();
 
-    size_t get_size() const noexcept;
+    void init_transaction(Transaction *txn);
+    void commit_transaction(Transaction *txn);
+
+    size_t get_size() const noexcept {
+        return size;
+    }
+
+    size_t get_min_txn_id() const noexcept {
+        return state->min_txn_id;
+    }
+
+    Object get_top() const noexcept {
+        return state->top;
+    }
 };
 
 #endif //MEMORYMAPPING_H

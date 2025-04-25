@@ -4,6 +4,51 @@
 #include "Typedefs.h"
 #include "Synch.h"
 
+/**
+    * \struct Block
+    * \brief Represents a block of memory that has been freed and can be
+    * used.
+    *
+    * The `Block` struct represents a block that is not allocated. It
+    * free memory before top since all memory after the top is free
+    * already.
+    */
+struct Block {
+    /** \brief The position of the block in memory. */
+    Object obj;
+
+    /** \brief The size of the block. */
+    std::size_t size;
+
+    /** \brief The id of the transaction that freed this block. */
+    std::size_t txn_id;
+};
+
+/**
+* \struct BlockDescr
+* \brief Describes a block of memory and its relationships to other blocks.
+*
+* The `BlockDescr` structure is used to represent a memory block and its
+* connections to other free or unused blocks. It helps manage memory
+* allocation and deallocation efficiently by maintaining linked lists
+* of free and unused blocks. A block descriptor is either used or
+* unused. Hence only its position in one of the lists is relevant.
+*/
+struct BlockDescr {
+    /** \brief The memory block associated with this descriptor. */
+    Block block;
+
+    /** \brief A reference to the next free block. */
+    Ref<BlockDescr> next_free;
+
+    /** \brief A reference to the next unused block descriptor. */
+    Ref<BlockDescr> next_unused;
+
+    /** \brief The id of the transaction which allocated the
+     * descriptor. */
+    std::size_t txn_id;
+};
+
 struct MemState {
     std::size_t file_size;
 
@@ -15,8 +60,8 @@ struct MemState {
     RWLock resize_rw_lock;
 
     Object top;              // Top of the memory map
-    Object free_list;        // List of free block descriptors
-    Object free_descriptors; // List of unused block descriptors
+    Ref<BlockDescr> free_blocks;        // List of free block descriptors
+    Ref<BlockDescr> free_descrs; // List of unused block descriptors
 };
 
 #endif //DBSTATE_H

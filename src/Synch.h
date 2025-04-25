@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdexcept>
+#include <iostream>
 
 /* Wrapper class for pthread mutex for use in memory mapped files. Let addr
  * point to an address in a memory mapped file, we can access the mutex like
@@ -44,7 +45,9 @@ public:
     void lock() {
         if (!initialized) throw std::runtime_error("Mutex not initialized");
 
+        std::cout << "Requesting mutex" << std::endl;
         pthread_mutex_lock(&mutex);
+        std::cout << "Mutex was acquired" << std::endl;
     }
 
     void unlock() {

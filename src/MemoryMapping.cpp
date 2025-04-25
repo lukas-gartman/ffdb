@@ -1,8 +1,6 @@
 #include "MemoryMapping.h"
 
-#include <cstring>
 #include <fcntl.h>
-#include <iostream>
 #include <stdexcept>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -68,8 +66,8 @@ state(nullptr) {
         state->resize_rw_lock.init();
 
         state->top = 1; // 0 is null
-        state->free_list = 0;
-        state->free_descriptors = 0;
+        state->free_blocks = 0;
+        state->free_descrs = 0;
     }
 }
 
@@ -77,15 +75,58 @@ MemoryMapping::~MemoryMapping() {
     cleanup();
 }
 
-ssize_t MemoryMapping::calc_mem_map_size(size_t init_size) {
-    // Round init_size to nearest multiple of page_size
-    size_t new_size =
-        ((init_size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+void MemoryMapping::init_transaction(Transaction *txn) {
+    state->write_lock.lock();
 
-    if (new_size < MIN_PAGE_SIZE)
-        new_size = MIN_PAGE_SIZE;
+    if (mprotect(base, size, PROT_READ | PROT_WRITE) == -1)
+        throw std::runtime_error("Errno: " + std::to_string(errno));
 
-    return new_size;
+    current_base = base;
+
+    txn->id = state->curr_txn_id;
+    txn->top = state->top;
+    txn->free_blocks = state->free_blocks;
+    txn->unused_descrs = state->free_descrs;
+    txn->pending_unused_descrs = 0;
+    txn->pending_unused_last = 0;
+    txn->lf_block.obj = 0;
+    txn->lf_block.size = 0;
+    txn->lf_block.txn_id = 0;
+}
+
+void MemoryMapping::commit_transaction(Transaction *txn) {
+    auto saved_top = state->top;
+    auto saved_free_list = state->free_blocks;
+    auto saved_free_descriptors = state->free_descrs;
+
+    if (txn->pending_unused_last != 0) {
+        txn->pending_unused_descrs->next_unused = txn->unused_descrs;
+        txn->unused_descrs = txn->pending_unused_descrs;
+    }
+
+    if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0)
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+
+    state->top = txn->top;
+    state->free_blocks = txn->free_blocks;
+    state->free_descrs = txn->unused_descrs;
+    state->curr_txn_id++;
+
+    if (mprotect(base, size, PROT_READ) == -1)
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+
+    if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0) {
+        state->top = saved_top;
+        state->free_blocks = saved_free_list;
+        state->free_descrs = saved_free_descriptors;
+        state->curr_txn_id--;
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
+
+    // state->writer_pid = 0;
+
+    state->write_lock.unlock();
+
 }
 
 void MemoryMapping::cleanup() noexcept {
@@ -100,6 +141,12 @@ void MemoryMapping::cleanup() noexcept {
     }
 }
 
-size_t MemoryMapping::get_size() const noexcept {
-    return size;
+size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
+    size_t new_size =
+            ((init_size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+
+    if (new_size < MIN_PAGE_SIZE)
+        new_size = MIN_PAGE_SIZE;
+
+    return new_size;
 }

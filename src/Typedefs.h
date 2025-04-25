@@ -12,7 +12,8 @@ private:
     Object offset;
 
 public:
-    Ref(const Object o) { offset = o; }
+    Ref(): offset(0) {}
+    Ref(const Object o): offset(o) {}
 
     A *operator->() const { return (A *)(current_base + offset); }
     operator A *() const { return (A *)(current_base + offset); }

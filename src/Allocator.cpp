@@ -3,42 +3,41 @@
 #include <cassert>
 #include <stdexcept>
 
-Allocator::Allocator(MemState* state, std::size_t memory_map_size):
-    state(state),
-    memory_map_size(memory_map_size),
-    local_top(state->top),
-    block_descriptor_list(state->free_list),
-    unused_block_descriptor_list(state->free_descriptors),
-    last_free_block({0, 0}) {}
+Allocator::Allocator(MemoryMapping *mmap):
+        mmap(mmap), curr_txn(nullptr) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
     Object obj;
 
     // Check if there is a free block cached that can be used.
-    if (last_free_block.obj != 0 &&
-        last_free_block.size >= bytes) {
+    if (curr_txn->lf_block.obj != 0 &&
+        curr_txn->lf_block.size >= bytes &&
+        curr_txn->lf_block.txn_id < mmap->get_min_txn_id()) {
 
-        obj = last_free_block.obj;
-        last_free_block.obj += bytes;
-        last_free_block.size -= bytes;
+        obj = curr_txn->lf_block.obj;
+        curr_txn->lf_block.obj += bytes;
+        curr_txn->lf_block.size -= bytes;
 
-        if (last_free_block.size == 0) last_free_block.obj = 0;
+        if (curr_txn->lf_block.size == 0) {
+            curr_txn->lf_block.obj = 0;
+            curr_txn->lf_block.txn_id = 0;
+        }
 
         return obj;
     }
 
     // Try finding a fitting block in the block descriptor list.
-    obj = delete_block_descriptor(bytes);
+    obj = delete_block_descr(bytes);
     if (obj != 0) return obj;
 
     // The above failed. Get memory from the top.
-    std::size_t free_size = memory_map_size - local_top;
+    std::size_t free_size = mmap->get_size() - curr_txn->top;
     // TODO: Temp until we can resize the memory map
     if (bytes > free_size)
         throw std::out_of_range("Block size too large");
 
-    obj = local_top;
-    local_top += bytes;
+    obj = curr_txn->top;
+    curr_txn->top += bytes;
 
     return obj;
 }
@@ -46,136 +45,245 @@ Object Allocator::malloc_internal(std::size_t bytes) {
 void Allocator::free_internal(Object obj, std::size_t bytes) {
     if (obj == 0) return;
 
-    // TODO: When implementing transactions the below can't happen
-    // TODO: when in the same transaction.
-    if (obj + bytes == local_top) {
-        local_top -= bytes;
+    if (obj >= mmap->state->top && obj + bytes == curr_txn->top) {
+        curr_txn->top -= bytes;
 
-        if (last_free_block.obj != 0 &&
-            last_free_block.obj + last_free_block.size == local_top) {
 
-            local_top -= last_free_block.size;
-            last_free_block.obj = 0;
-            last_free_block.size = 0;
+        // TODO: Maybe instead of checking if lf_block.txn_id == 0, check if lf_block.obj >= mmap->state->top?
+        if (curr_txn->lf_block.obj != 0 &&
+            curr_txn->lf_block.txn_id == 0 &&
+            curr_txn->lf_block.obj + curr_txn->lf_block.size == curr_txn->top) {
+
+            curr_txn->top -= curr_txn->lf_block.size;
+            curr_txn->lf_block.obj = 0;
+            curr_txn->lf_block.size = 0;
+            curr_txn->lf_block.txn_id = 0;
         }
 
         return;
     }
 
-    if (last_free_block.obj != 0) {
-        // Merge with last_free_block is adjacent.
-        const bool lsb_is_before =
-            last_free_block.obj + last_free_block.size == obj;
-        const bool lsb_is_after = obj + bytes == last_free_block.obj;
+    if (curr_txn->lf_block.obj != 0) {
+        // Merge with lf_block is adjacent.
+        const bool lf_block_is_before =
+                curr_txn->lf_block.obj + curr_txn->lf_block.size == obj;
+        const bool lf_block_is_after =
+                obj + bytes == curr_txn->lf_block.obj;
 
-        if (lsb_is_before || lsb_is_after) {
-            last_free_block.size += bytes;
+        if ((lf_block_is_before || lf_block_is_after) &&
+            curr_txn->id == curr_txn->lf_block.txn_id) {
 
-            if (lsb_is_after) last_free_block.obj = obj;
+            curr_txn->lf_block.size += bytes;
+
+            if (lf_block_is_after)
+                curr_txn->lf_block.obj = obj;
 
             return;
         }
 
         // Otherwise, it will get replaced.
-        insert_block_descriptor(last_free_block.obj, last_free_block.size);
+        insert_block_descr(curr_txn->lf_block);
     }
 
-    last_free_block.obj = obj;
-    last_free_block.size = bytes;
+    curr_txn->lf_block.obj = obj;
+    curr_txn->lf_block.size = bytes;
+
+    // 0 as an id here means that the last free block is located beyond
+    // the top of the memory map. This is the case when the last free block
+    // couldn't be merged with the transaction local top. This signifies
+    // that the block can be immediately reused if it would be inserted
+    // into the blockdescriptor list.
+    // TODO: If it can be immediately reused, why even insert it into the
+    // TODO: block descriptor tree. Finish the database assuming this is
+    // TODO: needed, create tests, change this and see if the tests still
+    // TODO: pass. THis code is confusing.
+    curr_txn->lf_block.txn_id =
+            (obj >= mmap->state->top) ? 0 : curr_txn->id;
 }
 
-Ref<Allocator::BlockDescr>
-Allocator::new_block_descriptor(Object obj, std::size_t block_size) {
-    Ref<BlockDescr> block_descriptor = 0;
+void Allocator::start_transaction() {
+    if (curr_txn != nullptr)
+        throw std::runtime_error("A transaction is already active");
 
-    if (unused_block_descriptor_list != 0) {
-        block_descriptor = unused_block_descriptor_list;
-        unused_block_descriptor_list =
-            unused_block_descriptor_list->next;
+    auto *txn = new Transaction();
+    mmap->init_transaction(txn);
+
+    curr_txn = txn;
+}
+
+void Allocator::commit_transaction() {
+    if (curr_txn == nullptr)
+        throw std::runtime_error("No transaction to end");
+
+    if (curr_txn->lf_block.obj != 0) {
+        insert_block_descr(curr_txn->lf_block);
+        curr_txn->lf_block = {0, 0, 0};
+    }
+
+    mmap->commit_transaction(curr_txn);
+
+    delete curr_txn;
+    curr_txn = nullptr;
+}
+
+Ref<BlockDescr>
+Allocator::new_block_descr(Block block) {
+    Ref<BlockDescr> descr = 0;
+
+    if (curr_txn->unused_descrs != 0) {
+        descr = curr_txn->unused_descrs;
+        curr_txn->unused_descrs =
+                curr_txn->unused_descrs->next_unused;
     }
     else {
         // Allocate a new block descriptor
-        const size_t free_size = memory_map_size - local_top;
+        const size_t free_size = mmap->get_size() - curr_txn->top;
         // TODO: Temp until we can resize the memory map
-        if (block_size > free_size)
+        if (block.size > free_size)
             throw std::out_of_range("Block size too large");
 
-        block_descriptor = local_top;
-        local_top += sizeof(BlockDescr);
+        descr = curr_txn->top;
+        curr_txn->top += sizeof(BlockDescr);
     }
 
-    block_descriptor->block.obj = obj;
-    block_descriptor->block.size = block_size;
-    block_descriptor->next = 0;
+    descr->block = block;
+    descr->next_free = 0;
+    descr->next_unused = 0;
+    descr->txn_id = curr_txn->id;
 
-    return block_descriptor;
+    return descr;
 }
 
-void Allocator::insert_block_descriptor(Object obj, std::size_t block_size) {
-    Ref<BlockDescr> new_list =
-        new_block_descriptor(obj, block_size);
+Ref<BlockDescr> Allocator::upd_block_descr(Ref<BlockDescr> descr) {
+    // If the descr is not from a previous transaction, there is no need
+    // to do copy-on-write.
+    if (descr->txn_id == curr_txn->id) return descr;
 
-    new_list->next = block_descriptor_list;
-    block_descriptor_list = new_list;
+    // Add the old descriptor to the pending unused list. In case of
+    // a rollback, this descriptor will still have its old position in
+    // the free list from before the start of the current_transaction.
+    descr->next_unused = curr_txn->pending_unused_descrs;
+    if (curr_txn->pending_unused_last == 0)
+        curr_txn->pending_unused_last = descr;
+
+    Ref<BlockDescr> new_descr = new_block_descr(descr->block);
+
+    return new_descr;
 }
 
-Object Allocator::delete_block_descriptor(std::size_t block_size) {
-    // If block_descriptor_list is empty, there is nothing to delete.
-    if (block_descriptor_list == 0)
-        return 0;
+void Allocator::insert_block_descr(Block block) {
+    Ref<BlockDescr> descr = new_block_descr(block);
 
-    Ref<BlockDescr> best_fit_prev = 0;
-    Ref<BlockDescr> best_fit = 0;
+    Ref<BlockDescr> prev_descr = 0;
+    Ref<BlockDescr> curr_descr = curr_txn->free_blocks;
 
-    Ref<BlockDescr> prev_descriptor = 0;
-    Ref<BlockDescr> current_descriptor = block_descriptor_list;
+    // Block descr is sorted by size first and then transaction id.
+    while (curr_descr != 0) {
+        bool found =
+            (descr->block.size < curr_descr->block.size) ||
+            (descr->block.size == curr_descr->block.size &&
+                descr->block.txn_id <= curr_descr->block.txn_id);
 
-    // Find the best fitting block.
-    while (current_descriptor != 0) {
-        const std::size_t descr_block_size = current_descriptor->block.size;
+        // If we found a position to place our block descr in,
+        // we will not need to CoW the current_descr.
+        if (found) {
+            descr->next_free = curr_descr;
+            if (prev_descr != 0) prev_descr->next_free = descr;
+            else curr_txn->free_blocks = descr; // Insert at the head
 
-        if (block_size <= descr_block_size &&
-            (best_fit == 0 || descr_block_size < best_fit->block.size)) {
-
-            best_fit_prev = prev_descriptor;
-            best_fit = current_descriptor;
-
-            // Perfect fit. No need to search further.
-            if (best_fit->block.size == block_size) break;
+            return;
         }
 
-        prev_descriptor = current_descriptor;
-        current_descriptor = current_descriptor->next;
+        // CoW this bad boy
+        curr_descr = upd_block_descr(curr_descr);
+        if (prev_descr == 0) {
+            curr_txn->free_blocks = curr_descr;
+        } else {
+            prev_descr->next_free = curr_descr;
+        }
+
+        prev_descr = curr_descr;
+        curr_descr = curr_descr->next_free;
+    }
+
+    descr->next_free = 0;
+    if (prev_descr != 0) {
+        prev_descr->next_free = descr;
+    } else {
+        curr_txn->free_blocks = descr; // Insert as the only element
+    }
+}
+
+Object Allocator::delete_block_descr(std::size_t block_size) {
+    if (curr_txn->free_blocks == 0)
+        return 0;
+
+    Ref<BlockDescr> prev_descr = 0;
+    Ref<BlockDescr> curr_descr = curr_txn->free_blocks;
+
+    // Find the best fitting block.
+    while (curr_descr != 0) {
+        // We search for the first block that is large enough to fit the
+        // requested size with the added condition that the block is not
+        // used by any older revision.
+        bool found =
+                curr_descr->block.size >= block_size &&
+                curr_descr->block.txn_id < mmap->state->min_txn_id;
+
+        if (found) break;
+
+        // CoW this bad boy
+        curr_descr = upd_block_descr(curr_descr);
+        if (prev_descr == 0) {
+            curr_txn->free_blocks = curr_descr;
+        } else {
+            prev_descr->next_free = curr_descr;
+        }
+
+        prev_descr = curr_descr;
+        curr_descr = curr_descr->next_free;
     }
 
     // Found no fit at all.
-    if (best_fit == 0) return 0;
+    if (curr_descr == 0) return 0;
 
-    Object offset = best_fit->block.obj;
-
-    best_fit->block.obj += block_size;
-    best_fit->block.size -= block_size;
-
-    // best_fit block descriptor is now unused. Remove it from the
-    // block descriptor list and add it to the unused block descriptor list.
-    if (best_fit_prev != 0)
-        best_fit_prev->next = best_fit->next;
+    // Remove the block descriptor from the free list.
+    if (prev_descr != 0)
+        prev_descr->next_free = curr_descr->next_free;
     else
-        block_descriptor_list = best_fit->next;
+        curr_txn->free_blocks = curr_descr->next_free;
 
-    best_fit->next = unused_block_descriptor_list;
-    unused_block_descriptor_list = best_fit;
+    // If the block was allocated this transaction, it is added to the
+    // unused list. Otherwise it is added to the pending unused list.
+    if (curr_descr->txn_id == curr_txn->id) {
+        curr_descr->next_unused = curr_txn->unused_descrs;
+        curr_txn->unused_descrs = curr_descr;
+    }
+    else {
+        curr_descr->next_unused = curr_txn->pending_unused_descrs;
+        curr_txn->pending_unused_descrs = curr_descr;
 
-    Block block_left = best_fit->block;
+        if (curr_txn->pending_unused_last == 0)
+            curr_txn->pending_unused_last = curr_descr;
+    }
+
+    // Block offset to return
+    Object offset = curr_descr->block.obj;
+
+    curr_descr->block.obj += block_size;
+    curr_descr->block.size -= block_size;
+
+    Block block_left = curr_descr->block;
 
     // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
     if (block_left.size != 0) {
-        if (last_free_block.obj != 0) {
-            insert_block_descriptor(last_free_block.obj, last_free_block.size);
+        if (curr_txn->lf_block.obj != 0) {
+            insert_block_descr(curr_txn->lf_block);
         }
-        last_free_block.obj = block_left.obj;
-        last_free_block.size = block_left.size;
+        curr_txn->lf_block.obj = block_left.obj;
+        curr_txn->lf_block.size = block_left.size;
+        curr_txn->lf_block.txn_id = block_left.txn_id;
     }
 
     return offset;

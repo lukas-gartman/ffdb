@@ -8,12 +8,15 @@
 
 class FFDB {
 private:
+    Transaction *curr_txn;
+
+public:
     Allocator *alloc;
     MemoryMapping *mem_mapping;
 
-public:
     FFDB(std::string filepath, int flags, int mode, size_t init_size);
-};
 
+    void start_transaction();
+};
 
 #endif //FFDB_H
