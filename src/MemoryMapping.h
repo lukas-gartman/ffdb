@@ -19,6 +19,7 @@ public:
     constexpr static size_t PAGE_SIZE = 4096;
     constexpr static size_t MIN_PAGE_SIZE = PAGE_SIZE * 2;
 
+    // TODO: Make read only outside of class.
     MemState *state;
 
     MemoryMapping(
@@ -35,14 +36,6 @@ public:
 
     size_t get_size() const noexcept {
         return size;
-    }
-
-    size_t get_min_txn_id() const noexcept {
-        return state->min_txn_id;
-    }
-
-    Object get_top() const noexcept {
-        return state->top;
     }
 };
 

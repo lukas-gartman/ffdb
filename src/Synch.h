@@ -45,9 +45,7 @@ public:
     void lock() {
         if (!initialized) throw std::runtime_error("Mutex not initialized");
 
-        std::cout << "Requesting mutex" << std::endl;
         pthread_mutex_lock(&mutex);
-        std::cout << "Mutex was acquired" << std::endl;
     }
 
     void unlock() {

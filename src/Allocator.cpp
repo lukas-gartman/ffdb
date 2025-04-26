@@ -12,7 +12,7 @@ Object Allocator::malloc_internal(std::size_t bytes) {
     // Check if there is a free block cached that can be used.
     if (curr_txn->lf_block.obj != 0 &&
         curr_txn->lf_block.size >= bytes &&
-        curr_txn->lf_block.txn_id < mmap->get_min_txn_id()) {
+        curr_txn->lf_block.txn_id < mmap->state->min_txn_id) {
 
         obj = curr_txn->lf_block.obj;
         curr_txn->lf_block.obj += bytes;
