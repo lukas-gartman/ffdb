@@ -70,6 +70,7 @@ class BTree {
 private:
     Ref<Node<T, t>> root;
     Allocator *allocator;
+    int _size;
 
     /**
      * \brief Creates a new node in the B-Tree.
@@ -194,6 +195,7 @@ private:
             // Insert the new key
             x->keys[i + 1] = key;
             x->n = x->n + 1;
+            ++_size;
         } else {
             // Find the child to insert the new key
             while (i >= 0 && key < x->keys[i]) {
@@ -457,6 +459,7 @@ private:
         }
 
         --node->n; // Reduce the key count
+        --_size; // Reduce the size of the B-Tree
     }
 
     /**
@@ -581,7 +584,7 @@ public:
      *
      * \param alloc A pointer to the memory allocator used for node allocation.
      */
-    explicit BTree(Allocator *alloc) : root(REF_NULL) {
+    explicit BTree(Allocator *alloc) : root(REF_NULL), _size(0) {
         allocator = alloc;
         root = createNode(true);
     }
@@ -648,6 +651,16 @@ public:
             root = root->isLeaf ? REF_NULL : root->children[0];
             freeNode(tmp);
         }
+    }
+
+    /**
+     * \brief Gets the number of nodes in the B-Tree.
+     * \details This function returns the current counter keeping track of the number of keys in the B-Tree.
+     * \return The number of keys in the B-Tree.
+     */
+    [[nodiscard]]
+    int size() const {
+        return _size;
     }
 
     /**
