@@ -319,8 +319,33 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
 
 void Allocator::dump_block_descrs() {
     std::cout << "[[dump_block_descrs]]" << std::endl;
+
+    std::cout << "---- Shared state:" << std::endl;
     std::cout << "-- Free blocks:" << std::endl;
-    auto block_descr = curr_txn->free_blocks;
+    auto block_descr = mmap->state->free_blocks;
+    while (block_descr != 0) {
+        std::cout << "  Block: " << block_descr->block.obj
+                  << ", Size: " << block_descr->block.size
+                  << ", Txn ID: " << block_descr->block.txn_id
+                  << std::endl;
+        block_descr = block_descr->next_free;
+    }
+    std::cout << std::endl;
+
+    std::cout << "-- Unused descrs:" << std::endl;
+    block_descr = mmap->state->free_descrs;
+    while (block_descr != 0) {
+        std::cout << "  Block: " << block_descr->block.obj
+                  << ", Size: " << block_descr->block.size
+                  << ", Txn ID: " << block_descr->block.txn_id
+                  << std::endl;
+        block_descr = block_descr->next_unused;
+    }
+    std::cout << std::endl;
+
+    std::cout << "---- Txn state:" << std::endl;
+    std::cout << "-- Free blocks:" << std::endl;
+    block_descr = curr_txn->free_blocks;
     while (block_descr != 0) {
         std::cout << "  Block: " << block_descr->block.obj
                   << ", Size: " << block_descr->block.size
