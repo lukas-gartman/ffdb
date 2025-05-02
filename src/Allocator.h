@@ -22,6 +22,8 @@ public:
     void start_transaction();
     void commit_transaction();
 
+    void dump_block_descrs();
+
 private:
     MemoryMapping *mmap;
     Transaction *curr_txn;

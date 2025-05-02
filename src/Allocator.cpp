@@ -7,6 +7,7 @@ Allocator::Allocator(MemoryMapping *mmap):
         mmap(mmap), curr_txn(nullptr) {}
 
 Object Allocator::malloc_internal(std::size_t bytes) {
+    std::cout << "[malloc_internal: " << bytes << "]" << std::endl;
     Object obj;
 
     // Check if there is a free block cached that can be used.
@@ -14,9 +15,13 @@ Object Allocator::malloc_internal(std::size_t bytes) {
         curr_txn->lf_block.size >= bytes &&
         curr_txn->lf_block.txn_id < mmap->state->min_txn_id) {
 
+        std::cout << "- Use lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ")" << std::endl;
+
         obj = curr_txn->lf_block.obj;
         curr_txn->lf_block.obj += bytes;
         curr_txn->lf_block.size -= bytes;
+
+        std::cout << "- " << curr_txn->lf_block.size << " bytes left in lf_block" << std::endl;
 
         if (curr_txn->lf_block.size == 0) {
             curr_txn->lf_block.obj = 0;
@@ -27,6 +32,7 @@ Object Allocator::malloc_internal(std::size_t bytes) {
     }
 
     // Try finding a fitting block in the block descriptor list.
+    std::cout << "- Search for a block in block descr list" << std::endl;
     obj = delete_block_descr(bytes);
     if (obj != 0) return obj;
 
@@ -36,30 +42,38 @@ Object Allocator::malloc_internal(std::size_t bytes) {
     if (bytes > free_size)
         throw std::out_of_range("Block size too large");
 
+    std::cout << "- Allocate block on top at " << curr_txn->top << std::endl;
     obj = curr_txn->top;
     curr_txn->top += bytes;
+
+    std::cout << std::endl;
 
     return obj;
 }
 
 void Allocator::free_internal(Object obj, std::size_t bytes) {
+    std::cout << "[free_internal: " << obj << ", " << bytes << "]" << std::endl;
     if (obj == 0) return;
 
-    if (obj >= mmap->state->top && obj + bytes == curr_txn->top) {
-        curr_txn->top -= bytes;
+    size_t txn_id = (obj >= mmap->state->top) ? 0 : curr_txn->id;
 
+    if (txn_id == 0 && obj + bytes == curr_txn->top) {
+        std::cout << "- Free block on top at " << curr_txn->top << std::endl;
+        curr_txn->top -= bytes;
 
         // TODO: Maybe instead of checking if lf_block.txn_id == 0, check if lf_block.obj >= mmap->state->top?
         if (curr_txn->lf_block.obj != 0 &&
             curr_txn->lf_block.txn_id == 0 &&
             curr_txn->lf_block.obj + curr_txn->lf_block.size == curr_txn->top) {
 
+            std::cout << "- Merge up with lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ")" << std::endl;
+
             curr_txn->top -= curr_txn->lf_block.size;
             curr_txn->lf_block.obj = 0;
             curr_txn->lf_block.size = 0;
             curr_txn->lf_block.txn_id = 0;
         }
-
+        std::cout << std::endl;
         return;
     }
 
@@ -71,9 +85,14 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
                 obj + bytes == curr_txn->lf_block.obj;
 
         if ((lf_block_is_before || lf_block_is_after) &&
-            curr_txn->id == curr_txn->lf_block.txn_id) {
+            curr_txn->lf_block.txn_id == txn_id) {
 
             curr_txn->lf_block.size += bytes;
+
+            if (lf_block_is_before)
+                std::cout << "- Merge up with lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ")" << std::endl;
+            else if (lf_block_is_after)
+                std::cout << "- Merge down with lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ")" << std::endl;
 
             if (lf_block_is_after)
                 curr_txn->lf_block.obj = obj;
@@ -81,6 +100,7 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
             return;
         }
 
+        std::cout << "- Insert lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ") in free blocks list" << std::endl;
         // Otherwise, it will get replaced.
         insert_block_descr(curr_txn->lf_block);
     }
@@ -97,8 +117,9 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
     // TODO: block descriptor tree. Finish the database assuming this is
     // TODO: needed, create tests, change this and see if the tests still
     // TODO: pass. THis code is confusing.
-    curr_txn->lf_block.txn_id =
-            (obj >= mmap->state->top) ? 0 : curr_txn->id;
+    curr_txn->lf_block.txn_id = txn_id;
+
+    std::cout << "- New lf_block (" << curr_txn->lf_block.obj << ", " << curr_txn->lf_block.size << ", " << curr_txn->lf_block.txn_id << ")" << std::endl << std::endl;
 }
 
 void Allocator::start_transaction() {
@@ -223,16 +244,26 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
 
     // Find the best fitting block.
     while (curr_descr != 0) {
-        // We search for the first block that is large enough to fit the
-        // requested size with the added condition that the block is not
-        // used by any older revision.
         bool found =
                 curr_descr->block.size >= block_size &&
                 curr_descr->block.txn_id < mmap->state->min_txn_id;
 
         if (found) break;
 
-        // CoW this bad boy
+        prev_descr = curr_descr;
+        curr_descr = curr_descr->next_free;
+    }
+
+    Ref<BlockDescr> best_fit = curr_descr;
+
+    // Found no fit at all.
+    if (best_fit == 0) return 0;
+
+    // If a fitting block was found, we need to CoW the path leading to it.
+    prev_descr = 0;
+    curr_descr = curr_txn->free_blocks;
+
+    while (curr_descr != best_fit) {
         curr_descr = upd_block_descr(curr_descr);
         if (prev_descr == 0) {
             curr_txn->free_blocks = curr_descr;
@@ -243,9 +274,6 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
         prev_descr = curr_descr;
         curr_descr = curr_descr->next_free;
     }
-
-    // Found no fit at all.
-    if (curr_descr == 0) return 0;
 
     // Remove the block descriptor from the free list.
     if (prev_descr != 0)
@@ -287,4 +315,40 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
     }
 
     return offset;
+}
+
+void Allocator::dump_block_descrs() {
+    std::cout << "[[dump_block_descrs]]" << std::endl;
+    std::cout << "-- Free blocks:" << std::endl;
+    auto block_descr = curr_txn->free_blocks;
+    while (block_descr != 0) {
+        std::cout << "  Block: " << block_descr->block.obj
+                  << ", Size: " << block_descr->block.size
+                  << ", Txn ID: " << block_descr->block.txn_id
+                  << std::endl;
+        block_descr = block_descr->next_free;
+    }
+    std::cout << std::endl;
+
+    std::cout << "-- Unused descrs:" << std::endl;
+    block_descr = curr_txn->unused_descrs;
+    while (block_descr != 0) {
+        std::cout << "  Block: " << block_descr->block.obj
+                  << ", Size: " << block_descr->block.size
+                  << ", Txn ID: " << block_descr->block.txn_id
+                  << std::endl;
+        block_descr = block_descr->next_unused;
+    }
+    std::cout << std::endl;
+
+    std::cout << "-- Pending unused descrs:" << std::endl;
+    block_descr = curr_txn->pending_unused_descrs;
+    while (block_descr != 0) {
+        std::cout << "  Block: " << block_descr->block.obj
+                  << ", Size: " << block_descr->block.size
+                  << ", Txn ID: " << block_descr->block.txn_id
+                  << std::endl;
+        block_descr = block_descr->next_unused;
+    }
+    std::cout << std::endl;
 }

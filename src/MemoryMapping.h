@@ -37,6 +37,10 @@ public:
     size_t get_size() const noexcept {
         return size;
     }
+
+    unsigned char *get_base() const noexcept {
+        return base;
+    }
 };
 
 #endif //MEMORYMAPPING_H

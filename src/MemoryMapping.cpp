@@ -100,7 +100,7 @@ void MemoryMapping::commit_transaction(Transaction *txn) {
     auto saved_free_descriptors = state->free_descrs;
 
     if (txn->pending_unused_last != 0) {
-        txn->pending_unused_descrs->next_unused = txn->unused_descrs;
+        txn->pending_unused_last->next_unused = txn->unused_descrs;
         txn->unused_descrs = txn->pending_unused_descrs;
     }
 
