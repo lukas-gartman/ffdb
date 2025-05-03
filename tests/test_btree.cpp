@@ -1,5 +1,5 @@
-/*#include <gtest/gtest.h>
-#include "../BTree.h"
+#include <gtest/gtest.h>
+#include "../src/BTree.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -7,8 +7,47 @@
 #include <random>
 #include <unordered_set>
 
+/*static const std::size_t PAGE_SIZE = 4096;
+
+class MemoryMapState {
+public:
+    void *memory_map;
+    std::size_t memory_map_size;
+
+    MemoryMapState(std::size_t memory_map_size):
+        memory_map_size(memory_map_size) {
+
+        memory_map = new char[memory_map_size];
+    }
+
+    ~MemoryMapState() {
+        delete[] (char*) memory_map;
+    }
+};
+
+struct MockBlockDescriptor {
+    Object mbd1;
+    Object mbd2;
+    Ref<MockBlockDescriptor> mbd3;
+};
+
 TEST(BTreeTest, InsertTest) {
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7*PAGE_SIZE);
+
+    current_base = (unsigned char *) mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *) current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state,
+        mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -30,8 +69,22 @@ TEST(BTreeTest, InsertTest) {
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
     constexpr int numKeys = 5000000;
-    BTree<int, 3> tree;
+    BTree::BTree<int, 3> tree(&alloc);
     for (int i = 1; i <= numKeys; ++i) {
         tree.insert(i);
     }
@@ -42,8 +95,22 @@ TEST(BTreeTest, SequentialInsertTest) {
 }
 
 TEST(BTreeTest, RandomInsert) {
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
     constexpr int numKeys = 50;
-    BTree<int, 3> tree;
+    BTree::BTree<int, 3> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -60,8 +127,22 @@ TEST(BTreeTest, RandomInsert) {
 }
 
 TEST(BTreeTest, DuplicateTest) {
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
     constexpr int numKeys = 1'000'000;
-    BTree<int, 100> tree;
+    BTree::BTree<int, 100> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -88,8 +169,22 @@ TEST(BTreeTest, DuplicateTest) {
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
-    const int keys[] = {1,2,3,3,4};
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    const int keys[] = {1, 2, 3, 3, 4};
+    BTree::BTree<int, 3> tree(&alloc);
     for (int key : keys) {
         tree.insert(key);
     }
@@ -99,7 +194,21 @@ TEST(BTreeTest, ManualDuplicateTest) {
 }
 
 TEST(BTreeTest, RemoveTest) {
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -131,9 +240,23 @@ TEST(BTreeTest, RemoveTest) {
 }
 
 TEST(BTreeTest, SequentialInsertRemove) {
-    constexpr int numKeys = 1000000;
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7 * PAGE_SIZE);
 
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
+
+    constexpr int numKeys = 1000000;
     for (int i = numKeys; i >= numKeys; --i) {
         tree.insert(i);
     }
@@ -162,9 +285,23 @@ std::vector<int> generateRandomKeys(int numKeys) {
 }
 
 TEST(BTreeTest, RandomInsertRemove) {
-    constexpr int numKeys = 1'000'000;
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7 * PAGE_SIZE);
 
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
+
+    constexpr int numKeys = 1'000'000;
     std::cout << "Generating random keys..." << std::endl;
     std::vector<int> keys = generateRandomKeys(numKeys);
     for (const int key : keys) {
@@ -191,7 +328,21 @@ TEST(BTreeTest, RandomInsertRemove) {
 }
 
 TEST(BTreeTest, RootNodeDelete) {
-    BTree<int, 3> tree;
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
 
     // Insertion order
     std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
@@ -227,12 +378,27 @@ TEST(BTreeTest, RootNodeDelete) {
 }
 
 TEST(BTreeTest, IncrementalInsertDelete) {
+    MemoryMapState mm_state(7 * PAGE_SIZE);
+
+    current_base = (unsigned char *)mm_state.memory_map;
+
+    auto *alloc_state = (Allocator::State *)current_base;
+    alloc_state->file_size = mm_state.memory_map_size;
+    alloc_state->top = 1;
+    alloc_state->free_list = 0;
+    alloc_state->free_descriptors = 0;
+
+    current_base += sizeof(Allocator::State);
+
+    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+
+    BTree::BTree<int, 3> tree(&alloc);
+
     const int start = 44;
     const int numKeys = 50;
     std::vector<int> keys = generateRandomKeys(numKeys);
     for (int i = start; i < numKeys; ++i) {
         std::cout << "\niteration " << i << std::endl;
-        BTree<int, 3> tree;
         bool testFailed = false;
         int failedKey = -1;
         std::string failedOperation;
