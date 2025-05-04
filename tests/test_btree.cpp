@@ -6,8 +6,8 @@
 #include <algorithm>
 #include <random>
 #include <unordered_set>
-
-/*static const std::size_t PAGE_SIZE = 4096;
+/*
+static const std::size_t PAGE_SIZE = 4096;
 
 class MemoryMapState {
 public:
@@ -15,7 +15,7 @@ public:
     std::size_t memory_map_size;
 
     MemoryMapState(std::size_t memory_map_size):
-        memory_map_size(memory_map_size) {
+            memory_map_size(memory_map_size) {
 
         memory_map = new char[memory_map_size];
     }
@@ -45,7 +45,7 @@ TEST(BTreeTest, InsertTest) {
     current_base += sizeof(Allocator::State);
 
     Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
+                    mm_state.memory_map_size - sizeof(Allocator::State));
 
     BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
@@ -469,5 +469,4 @@ TEST(BTreeTest, IncrementalInsertDelete) {
             break;
         }
     }
-}
-*/
+}*/
