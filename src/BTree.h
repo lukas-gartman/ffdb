@@ -36,7 +36,7 @@ class Node;
 /**
  * \class Node
  * \brief Represents a node in the B-Tree.
- * \details Each node contains an array of keys, an array of child references,
+ * \details Each node contains an array of keys, an array of child Refs,
  *          the number of keys, and whether the node is a leaf.
  *
  * \tparam T The type of keys stored in the node. Must satisfy the Comparable concept.
@@ -70,13 +70,14 @@ class BTree {
 private:
     Ref<Node<T, t>> root;
     Allocator *allocator;
+    int _size;
 
     /**
      * \brief Creates a new node in the B-Tree.
      * \details Allocates memory for a new node, initializes its properties, and sets all keys and children to default values.
      *
      * \param isLeaf A boolean indicating whether the node is a leaf node.
-     * \return A reference to the newly created node.
+     * \return A Ref to the newly created node.
      */
     Ref<Node<T, t>> createNode(bool isLeaf) {
         Ref<Node<T, t>> node = allocator->malloc<Node<T, t>>();
@@ -92,7 +93,7 @@ private:
      * \brief Frees a node in the B-Tree.
      * \details This function deallocates the memory associated with a given node using the allocator.
      *
-     * \param node The reference to the node to be freed.
+     * \param node The Ref to the node to be freed.
      */
     void freeNode(Ref<Node<T, t>> node) {
         allocator->free(node);
@@ -102,11 +103,11 @@ private:
      * \brief Searches for a key in the B-Tree.
      * \details This function recursively searches for a key in the B-Tree starting from the given node.
      *          If the key is found, it returns the node containing the key. If the key is not found,
-     *          it returns a null reference.
+     *          it returns a null Ref.
      *
      * \param x The node to start the search from.
      * \param key The key to search for in the B-Tree.
-     * \return A reference to the node containing the key, or REF_NULL if the key is not found.
+     * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
     Ref<Node<T, t>> search(Ref<Node<T, t>> x, T key) {
         // Find the index of the first key greater than or equal to key
@@ -194,6 +195,7 @@ private:
             // Insert the new key
             x->keys[i + 1] = key;
             x->n = x->n + 1;
+            ++_size;
         } else {
             // Find the child to insert the new key
             while (i >= 0 && key < x->keys[i]) {
@@ -457,6 +459,7 @@ private:
         }
 
         --node->n; // Reduce the key count
+        --_size; // Reduce the size of the B-Tree
     }
 
     /**
@@ -510,7 +513,7 @@ private:
      * \details This function deallocates the memory associated with a given node and all its child nodes.
      *          It ensures that all nodes in the subtree rooted at the given node are properly freed.
      *
-     * \param node The reference to the node to be deleted. If the node is null, the function does nothing.
+     * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
      */
     void deleteNode(Ref<Node<T, t>> node) {
         if (node == REF_NULL) return;
@@ -530,7 +533,7 @@ private:
      *          If the node is not a leaf, the function recursively traverses its children.
      *
      * \tparam Func The type of the callback function. It must be callable with a single argument of type `T`.
-     * \param node The reference to the node to start the traversal from.
+     * \param node The Ref to the node to start the traversal from.
      * \param callback The callback function to apply to each key during the traversal.
      */
     template <typename Func>
@@ -556,7 +559,7 @@ private:
      * \details This function performs a recursive traversal of the B-Tree, starting from the given node.
      *          It prints the keys of each node and their respective paths in the tree.
      *
-     * \param node The reference to the node to start printing from.
+     * \param node The Ref to the node to start printing from.
      * \param path A string representing the path to the current node in the tree.
      */
     void printNode(Ref<Node<T, t>> node, const std::string &path) {
@@ -581,7 +584,7 @@ public:
      *
      * \param alloc A pointer to the memory allocator used for node allocation.
      */
-    explicit BTree(Allocator *alloc) : root(REF_NULL) {
+    explicit BTree(Allocator *alloc) : root(REF_NULL), _size(0) {
         allocator = alloc;
         root = createNode(true);
     }
@@ -590,11 +593,11 @@ public:
     /**
      * \brief Searches for a key in the B-Tree.
      * \details This function searches for a key starting from the root node of the B-Tree.
-     *          If the key is found, it returns a reference to the node containing the key.
-     *          If the key is not found, it returns a null reference.
+     *          If the key is found, it returns a Ref to the node containing the key.
+     *          If the key is not found, it returns a null Ref.
      *
      * \param key The key to search for in the B-Tree.
-     * \return A reference to the node containing the key, or REF_NULL if the key is not found.
+     * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
     Ref<Node<T, t>> search(T key) {
         return root == REF_NULL ? REF_NULL : search(root, key);
@@ -648,6 +651,16 @@ public:
             root = root->isLeaf ? REF_NULL : root->children[0];
             freeNode(tmp);
         }
+    }
+
+    /**
+     * \brief Gets the number of nodes in the B-Tree.
+     * \details This function returns the current counter keeping track of the number of keys in the B-Tree.
+     * \return The number of keys in the B-Tree.
+     */
+    [[nodiscard]]
+    int size() const {
+        return _size;
     }
 
     /**
