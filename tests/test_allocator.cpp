@@ -1,109 +1,85 @@
 #include <gtest/gtest.h>
-#include <cstdint>
-#include <cstring>
+#include <random>
 #include <fcntl.h>
-#include <iostream>
-#include <stdexcept>
-#include <unistd.h>
-#include <sys/mman.h>
-
-#include "../src/Allocator.h" // Should include typedefs.h
+#include <climits>
+#include "../src/Allocator.h"
 #include "../src/FFDB.h"
 
-TEST(AllocatorTest, SimpleAllocTest) {
-    constexpr int TEST_SIZE = 10;
-    Ref<int> elems[TEST_SIZE];
+TEST(AllocatorTest, RandomOperationsTest) {
+    constexpr int NUM_OPERATIONS = 1000;
+    constexpr int MAX_ALLOCATIONS = 100;
 
-    {
-        FFDB db(std::string("test.db"), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 1024);
+    std::vector<Ref<int>> allocations_int(MAX_ALLOCATIONS / 2, 0);
+    std::vector<int> ctrl_vals_int(MAX_ALLOCATIONS / 2, 0);
+    std::vector<Ref<char>> allocations_char(MAX_ALLOCATIONS / 2, 0);
+    std::vector<char> ctrl_vals_char(MAX_ALLOCATIONS / 2, 0);
+    std::vector<double> weights = {4, 4, 2};
 
-        db.start_transaction();
+    std::mt19937 rng(std::random_device{}());
+    std::discrete_distribution<int> op_dist(weights.begin(), weights.end());
+    std::uniform_int_distribution<int> type_dist(0, 1);
+    std::uniform_int_distribution<int> index_dist(0, MAX_ALLOCATIONS / 2 - 1);
+    std::uniform_int_distribution<int> value_dist_int(1, INT_MAX);
+    std::uniform_int_distribution<char> value_dist_char(1, CHAR_MAX);
 
-        for (int i = 0; i < TEST_SIZE; ++i)
-            elems[i] = db.alloc->malloc<int>();
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-        for (int i = 0; i < TEST_SIZE; ++i)
-            *elems[i] = i;
+    for (int i = 0; i < NUM_OPERATIONS; ++i) {
+        int op = op_dist(rng);
+        int type = type_dist(rng);
+        int index = index_dist(rng);
 
-        for (int i = 0; i < TEST_SIZE; ++i)
-            EXPECT_EQ(*elems[i], i);
+        if (op == 0) { // Allocate and write
+            try {
+                if (type == 0 && allocations_int[index] == 0) {
+                    int value = value_dist_int(rng);
+                    allocations_int[index] = db.alloc->malloc<int>();
+                    *allocations_int[index] = value;
+                    ctrl_vals_int[index] = value;
+                }
+                else if (type == 1 && allocations_char[index] == 0) {
+                    char value = value_dist_char(rng);
+                    allocations_char[index] = db.alloc->malloc<char>();
+                    *allocations_char[index] = value;
+                    ctrl_vals_char[index] = value;
+                }
+            }
+            catch (...) {
+                break;
+            }
+        } else if (op == 1) { // Free
+            try {
+                if (type == 0 && allocations_int[index] != 0) {
+                    db.alloc->free<int>(allocations_int[index]);
+                    allocations_int[index] = 0;
+                    ctrl_vals_int[index] = 0;
+                } else if (type == 1 && allocations_char[index] != 0) {
+                    db.alloc->free<char>(allocations_char[index]);
+                    allocations_char[index] = 0;
+                    ctrl_vals_char[index] = 0;
+                }
+            }
+            catch (...) {
+                break;
+            }
+        } else if (op == 2) { // Commit/Start new transaction
+            db.commit_transaction();
+            db.start_transaction();
+        }
 
-        db.commit_transaction();
+        // Verify
+        for (int j = 0; j < MAX_ALLOCATIONS / 2; ++j) {
+            if (allocations_int[j] != 0) {
+                EXPECT_EQ(*allocations_int[j], ctrl_vals_int[j]);
+            }
+            else if (allocations_char[j] != 0) {
+                EXPECT_EQ(*allocations_char[j], ctrl_vals_char[j]);
+            }
+        }
     }
 
-    remove("test.db");
-}
-
-TEST(AllocatorTest, MergeLfBlockTest) {
-    Ref<int> i1;
-    Ref<int> i2;
-    Ref<int> i3;
-    Ref<int> i4;
-
-    {
-        FFDB db(std::string("test.db"), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 1024);
-
-        db.start_transaction();
-
-        i1 = db.alloc->malloc<int>();
-        i2 = db.alloc->malloc<int>();
-        i3 = db.alloc->malloc<int>();
-        i4 = db.alloc->malloc<int>();
-
-        db.alloc->free(i2);
-        db.alloc->free(i3);
-        db.alloc->free(i1);
-        db.alloc->free(i4);
-
-        db.commit_transaction();
-    }
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, TestTest) {
-    Ref<int> i1;
-    Ref<int> i2;
-    Ref<int> i3;
-    Ref<int> i4;
-    Ref<int> i5;
-    Ref<int> i6;
-
-    {
-        FFDB db(std::string("test.db"), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 1024);
-
-        std::cout << sizeof(BlockDescr) << std::endl;
-
-        db.start_transaction();
-
-        i1 = db.alloc->malloc<int>();
-        i2 = db.alloc->malloc<int>();
-        i3 = db.alloc->malloc<int>();
-        i4 = db.alloc->malloc<int>();
-        i5 = db.alloc->malloc<int>();
-        i6 = db.alloc->malloc<int>();
-
-        db.alloc->free(i1);
-        db.alloc->free(i3);
-        db.alloc->free(i5);
-
-        db.commit_transaction();
-
-        db.start_transaction();
-        db.alloc->malloc<int>();
-        db.alloc->malloc<int>();
-        db.alloc->dump_block_descrs();
-        db.commit_transaction();
-
-        db.start_transaction();
-        db.alloc->malloc<int>();
-        db.alloc->dump_block_descrs();
-        db.commit_transaction();
-
-        db.start_transaction();
-        db.alloc->dump_block_descrs();
-        db.commit_transaction();
-    }
+    db.commit_transaction();
 
     remove("test.db");
 }
