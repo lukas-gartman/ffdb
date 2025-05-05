@@ -46,6 +46,7 @@ template <Comparable T, int t>
 class Node {
 private:
     T keys[2*t-1];
+
     Ref<Node> children[2*t];
     int n; // Number of keys in the node
     bool isLeaf;
@@ -588,7 +589,7 @@ public:
         allocator = alloc;
         root = createNode(true);
     }
-    ~BTree() { deleteNode(root); }
+    //~BTree() { deleteNode(root); }
 
     /**
      * \brief Searches for a key in the B-Tree.

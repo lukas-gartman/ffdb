@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "../src/BTree.h"
+#include "../src/FFDB.h"
+#include <fcntl.h>
 
 #include <cstdlib>
 #include <ctime>
@@ -7,47 +9,12 @@
 #include <random>
 #include <unordered_set>
 
-/*static const std::size_t PAGE_SIZE = 4096;
-
-class MemoryMapState {
-public:
-    void *memory_map;
-    std::size_t memory_map_size;
-
-    MemoryMapState(std::size_t memory_map_size):
-        memory_map_size(memory_map_size) {
-
-        memory_map = new char[memory_map_size];
-    }
-
-    ~MemoryMapState() {
-        delete[] (char*) memory_map;
-    }
-};
-
-struct MockBlockDescriptor {
-    Object mbd1;
-    Object mbd2;
-    Ref<MockBlockDescriptor> mbd3;
-};
-
 TEST(BTreeTest, InsertTest) {
-    MemoryMapState mm_state(7*PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *) mm_state.memory_map;
+    BTree::BTree<int, 3> tree(db.alloc);
 
-    auto *alloc_state = (Allocator::State *) current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state,
-        mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -66,25 +33,19 @@ TEST(BTreeTest, InsertTest) {
     EXPECT_TRUE(tree.search(7));
     EXPECT_TRUE(tree.search(17));
     EXPECT_FALSE(tree.search(15));
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+    BTree::BTree<int, 3> tree(db.alloc);
 
     constexpr int numKeys = 5000000;
-    BTree::BTree<int, 3> tree(&alloc);
     for (int i = 1; i <= numKeys; ++i) {
         tree.insert(i);
     }
@@ -92,25 +53,19 @@ TEST(BTreeTest, SequentialInsertTest) {
     for (int i = 1; i <= numKeys; ++i) {
         EXPECT_TRUE(tree.search(i));
     }
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, RandomInsert) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+    BTree::BTree<int, 3> tree(db.alloc);
 
     constexpr int numKeys = 50;
-    BTree::BTree<int, 3> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -124,25 +79,19 @@ TEST(BTreeTest, RandomInsert) {
     for (int key : keys) {
         EXPECT_TRUE(tree.search(key));
     }
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, DuplicateTest) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+    BTree::BTree<int, 3> tree(db.alloc);
 
     constexpr int numKeys = 1'000'000;
-    BTree::BTree<int, 100> tree(&alloc);
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
@@ -166,49 +115,37 @@ TEST(BTreeTest, DuplicateTest) {
     });
 
     EXPECT_FALSE(hasDuplicate);
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
+    BTree::BTree<int, 3> tree(db.alloc);
 
     const int keys[] = {1, 2, 3, 3, 4};
-    BTree::BTree<int, 3> tree(&alloc);
     for (int key : keys) {
         tree.insert(key);
     }
 
     tree.remove(3);
     EXPECT_FALSE(tree.search(3));
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, RemoveTest) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
+    BTree::BTree<int, 3> tree(db.alloc);
 
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
     tree.insert(10);
     tree.insert(20);
     tree.insert(5);
@@ -237,24 +174,17 @@ TEST(BTreeTest, RemoveTest) {
     EXPECT_TRUE(tree.search(12));
     EXPECT_TRUE(tree.search(30));
     EXPECT_TRUE(tree.search(17));
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertRemove) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(db.alloc);
 
     constexpr int numKeys = 1000000;
     for (int i = numKeys; i >= numKeys; --i) {
@@ -285,21 +215,10 @@ std::vector<int> generateRandomKeys(int numKeys) {
 }
 
 TEST(BTreeTest, RandomInsertRemove) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(db.alloc);
 
     constexpr int numKeys = 1'000'000;
     std::cout << "Generating random keys..." << std::endl;
@@ -325,24 +244,17 @@ TEST(BTreeTest, RandomInsertRemove) {
         tree.insert(key);
         EXPECT_TRUE(tree.search(key)) << "Insert failed for key: " << key;
     }
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, RootNodeDelete) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(db.alloc);
 
     // Insertion order
     std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
@@ -375,24 +287,17 @@ TEST(BTreeTest, RootNodeDelete) {
     std::cout << "AFTER ----------------" << std::endl;
     tree.print();
     EXPECT_FALSE(tree.search(21));
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
 
 TEST(BTreeTest, IncrementalInsertDelete) {
-    MemoryMapState mm_state(7 * PAGE_SIZE);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_transaction();
 
-    current_base = (unsigned char *)mm_state.memory_map;
-
-    auto *alloc_state = (Allocator::State *)current_base;
-    alloc_state->file_size = mm_state.memory_map_size;
-    alloc_state->top = 1;
-    alloc_state->free_list = 0;
-    alloc_state->free_descriptors = 0;
-
-    current_base += sizeof(Allocator::State);
-
-    Allocator alloc(alloc_state, mm_state.memory_map_size - sizeof(Allocator::State));
-
-    BTree::BTree<int, 3> tree(&alloc);
+    BTree::BTree<int, 3> tree(db.alloc);
 
     const int start = 44;
     const int numKeys = 50;
@@ -469,5 +374,8 @@ TEST(BTreeTest, IncrementalInsertDelete) {
             break;
         }
     }
+
+    db.commit_transaction();
+
+    remove("test.db");
 }
-*/
