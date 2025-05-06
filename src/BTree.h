@@ -25,13 +25,13 @@ concept Comparable = requires(T a, T b) {
     { a != b } -> std::convertible_to<bool>;
 };
 
-template <Comparable T, typename V, int t>
+template <Comparable K, typename V, int t>
 class BTree;
 
-template <Comparable T, typename V, int t>
+template <Comparable K, typename V, int t>
 class Node;
 
-#define REF_NULL Ref<Node<T, V, t>>::null()
+#define REF_NULL Ref<Node<K, V, t>>::null()
 
 /**
 * \struct KeyValue
@@ -39,12 +39,12 @@ class Node;
 * \details Stores a key of type `T` and a value of either type `V` or a reference to `V`.
 *          A `Ref` is used to store the value in an overflow page if the value does not fit within the node.
 *
-* \tparam T The type of the key. Must satisfy the Comparable concept.
+* \tparam K The type of the key. Must satisfy the Comparable concept.
 * \tparam V The type of the value. Can be a direct value or a `Ref` to the value.
 */
-template <Comparable T, typename V>
+template <Comparable K, typename V>
 struct KeyValue {
-    T key;
+    K key;
     std::variant<V, Ref<V>> value;
 };
 
@@ -54,7 +54,7 @@ struct KeyValue {
  * \details Each node contains an array of key-value pairs, an array of child node Refs,
  *          the number of keys, and whether the node is a leaf.
  *
- * \tparam T The type of keys stored in the node. Must satisfy the Comparable concept.
+ * \tparam K The type of keys stored in the node. Must satisfy the Comparable concept.
  * \tparam V The type of values stored in the node. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -62,15 +62,15 @@ struct KeyValue {
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-    template <Comparable T, typename V, int t>
+    template <Comparable K, typename V, int t>
     class Node {
     private:
-        KeyValue<T, V> keyValues[2*t-1];
+        KeyValue<K, V> keyValues[2*t-1];
         Ref<Node> children[2*t];
         int n; // Number of keys in the node
         bool isLeaf;
     public:
-        friend class BTree<T, V, t>;
+        friend class BTree<K, V, t>;
     };
 
 /**
@@ -78,7 +78,7 @@ struct KeyValue {
  * \brief A B-Tree implementation based on CLRS's definition.
  * \details Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8).
  *
- * \tparam T The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
+ * \tparam K The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
  * \tparam V The type of values stored in the B-Tree. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -86,10 +86,10 @@ struct KeyValue {
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-template <Comparable T, typename V, int t>
+template <Comparable K, typename V, int t>
 class BTree {
 private:
-    Ref<Node<T, V, t>> root;
+    Ref<Node<K, V, t>> root;
     Allocator *allocator;
     int _size;
 
@@ -100,12 +100,12 @@ private:
      * \param isLeaf A boolean indicating whether the node is a leaf node.
      * \return A Ref to the newly created node.
      */
-    Ref<Node<T, V, t>> createNode(bool isLeaf) {
-        Ref<Node<T, V, t>> node = allocator->malloc<Node<T, V, t>>();
+    Ref<Node<K, V, t>> createNode(bool isLeaf) {
+        Ref<Node<K, V, t>> node = allocator->malloc<Node<K, V, t>>();
         node->isLeaf = isLeaf;
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
-            node->keyValues[i].key = T();
+            node->keyValues[i].key = K();
             node->children[i] = REF_NULL;
         }
         node->children[2*t-1] = REF_NULL;
@@ -119,7 +119,7 @@ private:
      *
      * \param node The Ref to the node to be freed.
      */
-    void freeNode(Ref<Node<T, V, t>> node) {
+    void freeNode(Ref<Node<K, V, t>> node) {
         allocator->free(node);
     }
 
@@ -131,7 +131,7 @@ private:
      * \param key The key to search for in the B-Tree.
      * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
-    Ref<Node<T, V, t>> search(Ref<Node<T, V, t>> x, T key) {
+    Ref<Node<K, V, t>> search(Ref<Node<K, V, t>> x, K key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
         while (i < x->n && key > x->keyValues[i].key) {
@@ -151,9 +151,9 @@ private:
      * \param x The parent node containing the child to be split.
      * \param i The index of the child node in `x` to be split.
      */
-    void splitChild(Ref<Node<T, V, t>> x, int i) {
-        Ref<Node<T, V, t>> y = x->children[i];
-        Ref<Node<T, V, t>> z = createNode(y->isLeaf);
+    void splitChild(Ref<Node<K, V, t>> x, int i) {
+        Ref<Node<K, V, t>> y = x->children[i];
+        Ref<Node<K, V, t>> z = createNode(y->isLeaf);
         z->n = t - 1;
 
         // Copy the last t-1 keys of y to z
@@ -169,7 +169,7 @@ private:
         }
 
         // Store the middle key before reducing y's size
-        KeyValue<T, V> middleKeyValue = y->keyValues[t - 1];
+        KeyValue<K, V> middleKeyValue = y->keyValues[t - 1];
 
         // Reduce the number of keys in y
         y->n = t - 1;
@@ -203,7 +203,7 @@ private:
      * \param key The key to be inserted.
      * \param value The value associated with the key.
      */
-    void insertNonFull(Ref<Node<T, V, t>> x, T key, V value) {
+    void insertNonFull(Ref<Node<K, V, t>> x, K key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->isLeaf) {
@@ -255,9 +255,9 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order predecessor key-value pair.
      */
-    KeyValue<T, V> getInOrderPredecessor(Ref<Node<T, V, t>> node, int i) {
+    KeyValue<K, V> getInOrderPredecessor(Ref<Node<K, V, t>> node, int i) {
         // Find the rightmost child of the left child
-        Ref<Node<T, V, t>> current = node->children[i];
+        Ref<Node<K, V, t>> current = node->children[i];
         while (!current->isLeaf) {
             current = current->children[current->n];
         }
@@ -273,9 +273,9 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order successor key-value pair.
      */
-    KeyValue<T, V> getInOrderSuccessor(Ref<Node<T, V, t>> node, int i) {
+    KeyValue<K, V> getInOrderSuccessor(Ref<Node<K, V, t>> node, int i) {
         // Find the leftmost child of the right child
-        Ref<Node<T, V, t>> current = node->children[i + 1];
+        Ref<Node<K, V, t>> current = node->children[i + 1];
         while (!current->isLeaf) {
             current = current->children[0];
         }
@@ -291,9 +291,9 @@ private:
      * \param parent The parent node containing the child to be rebalanced.
      * \param i The index of the child node in the parent node's children array.
      */
-    void rebalanceNode(Ref<Node<T, V, t>> parent, int i) {
-        Ref<Node<T, V, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL;
-        Ref<Node<T, V, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
+    void rebalanceNode(Ref<Node<K, V, t>> parent, int i) {
+        Ref<Node<K, V, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL;
+        Ref<Node<K, V, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
 
         // Move a key from an immediate sibling if it has enough keys
         if (leftSibling && leftSibling->n >= t) {
@@ -320,9 +320,9 @@ private:
      * \param parent The parent node containing the child and its left sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void moveKeyAndChildFromLeftSibling(Ref<Node<T, V, t>> parent, int i) {
-        Ref<Node<T, V, t>> child = parent->children[i];
-        Ref<Node<T, V, t>> leftSibling = parent->children[i - 1];
+    void moveKeyAndChildFromLeftSibling(Ref<Node<K, V, t>> parent, int i) {
+        Ref<Node<K, V, t>> child = parent->children[i];
+        Ref<Node<K, V, t>> leftSibling = parent->children[i - 1];
 
         // Shift keys right to make room for the key that we will take from parent
         for (int j = child->n - 1; j >= 0; --j) {
@@ -361,9 +361,9 @@ private:
      * \param parent The parent node containing the child and its right sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void moveKeyAndChildFromRightSibling(Ref<Node<T, V, t>> parent, int i) {
-        Ref<Node<T, V, t>> child = parent->children[i];
-        Ref<Node<T, V, t>> rightSibling = parent->children[i + 1];
+    void moveKeyAndChildFromRightSibling(Ref<Node<K, V, t>> parent, int i) {
+        Ref<Node<K, V, t>> child = parent->children[i];
+        Ref<Node<K, V, t>> rightSibling = parent->children[i + 1];
 
         // Bring down the key from parent
         child->keyValues[child->n] = parent->keyValues[i];
@@ -401,9 +401,9 @@ private:
      * \param parent The parent node containing the child and its right sibling.
      * \param i The index of the child node in the parent's children array.
      */
-    void merge(Ref<Node<T, V, t>> parent, int i) {
-        Ref<Node<T, V, t>> child = parent->children[i];
-        Ref<Node<T, V, t>> rightSibling = parent->children[i + 1];
+    void merge(Ref<Node<K, V, t>> parent, int i) {
+        Ref<Node<K, V, t>> child = parent->children[i];
+        Ref<Node<K, V, t>> rightSibling = parent->children[i + 1];
 
         // Bring down the key from parent
         child->keyValues[t - 1] = parent->keyValues[i];
@@ -446,21 +446,21 @@ private:
      * \param parent The parent node containing the key to be removed.
      * \param i The index of the key in the parent node's keys array.
      */
-    void removeFromNonLeaf(Ref<Node<T, V, t>> parent, int i) {
-        KeyValue<T, V> keyValue = parent->keyValues[i];
-        Ref<Node<T, V, t>> leftChild = parent->children[i];
-        Ref<Node<T, V, t>> rightChild = parent->children[i + 1];
+    void removeFromNonLeaf(Ref<Node<K, V, t>> parent, int i) {
+        KeyValue<K, V> keyValue = parent->keyValues[i];
+        Ref<Node<K, V, t>> leftChild = parent->children[i];
+        Ref<Node<K, V, t>> rightChild = parent->children[i + 1];
 
         if (leftChild->n >= t) {
             // Left child has at least t keys so we replace the key with the largest key in
             // the left subtree and recursively remove the predecessor from the left child
-            KeyValue<T, V> predecessor = getInOrderPredecessor(parent, i);
+            KeyValue<K, V> predecessor = getInOrderPredecessor(parent, i);
             parent->keyValues[i] = predecessor;
             remove(leftChild, predecessor.key);
         } else if (rightChild->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
-            KeyValue<T, V> successor = getInOrderSuccessor(parent, i);
+            KeyValue<K, V> successor = getInOrderSuccessor(parent, i);
             parent->keyValues[i] = successor;
             remove(rightChild, successor.key);
         } else {
@@ -479,7 +479,7 @@ private:
      * \param node The leaf node from which the key is to be removed.
      * \param i The index of the key to be removed in the node's `keyValues` array.
      */
-    void removeFromLeaf(Ref<Node<T, V, t>> node, const int i) {
+    void removeFromLeaf(Ref<Node<K, V, t>> node, const int i) {
         // Overwrite key by shifting keys to the left
         for (int j = i + 1; j < node->n; ++j) {
             node->keyValues[j - 1] = node->keyValues[j];
@@ -498,14 +498,14 @@ private:
      * \param node The node from which the key is to be removed.
      * \param key The key to be removed from the B-Tree.
      */
-    void remove(Ref<Node<T, V, t>> node, T key) {
+    void remove(Ref<Node<K, V, t>> node, K key) {
         // Find the first key greater than or equal to key
         int i = 0;
         while (i < node->n && node->keyValues[i].key < key) {
             ++i;
         }
 
-        Ref<Node<T, V, t>> child = node->children[i];
+        Ref<Node<K, V, t>> child = node->children[i];
 
         // Key exists in the current node
         if (i < node->n && node->keyValues[i].key == key) {
@@ -528,7 +528,7 @@ private:
             // If child was the last child and the number of keys in the node decreased
             // after re-balancing, search for the key in the previous child instead
             if (isLastChild && i > node->n) {
-                Ref<Node<T, V, t>> prevChild = node->children[i - 1];
+                Ref<Node<K, V, t>> prevChild = node->children[i - 1];
                 remove(prevChild, key);
             } else { // Search in the child
                 remove(child, key);
@@ -543,7 +543,7 @@ private:
      *
      * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
      */
-    void deleteNode(Ref<Node<T, V, t>> node) {
+    void deleteNode(Ref<Node<K, V, t>> node) {
         if (node == REF_NULL) return;
 
         if (!node->isLeaf) {
@@ -565,7 +565,7 @@ private:
     * \param callback The callback function to apply to each key-value pair during the traversal.
     */
     template <typename Func>
-    void traverseNode(Ref<Node<T, V, t>> node, Func& callback) {
+    void traverseNode(Ref<Node<K, V, t>> node, Func& callback) {
         if (node == REF_NULL) { return; }
 
         int i;
@@ -592,7 +592,7 @@ private:
      * \param node The Ref to the node to start printing from.
      * \param path A string representing the path to the current node in the tree.
      */
-    void printNode(Ref<Node<T, V, t>> node, const std::string &path) {
+    void printNode(Ref<Node<K, V, t>> node, const std::string &path) {
         if (node == REF_NULL) { return; }
 
         int i;
@@ -631,7 +631,7 @@ public:
      * \param key The key to search for in the B-Tree.
      * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
-    Ref<Node<T, V, t>> search(T key) {
+    Ref<Node<K, V, t>> search(K key) {
         return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
@@ -644,8 +644,8 @@ public:
      * \param key The key to be inserted into the B-Tree.
      * \param value The value associated with the key to be inserted.
      */
-    void insert(T key, V value) {
-        Ref<Node<T, V, t>> r = root;
+    void insert(K key, V value) {
+        Ref<Node<K, V, t>> r = root;
         if (r == REF_NULL) {
             root = createNode(true);
             root->keyValues[0].key = key;
@@ -656,7 +656,7 @@ public:
 
         // Check if the root is full and needs to be split
         if (r->n == 2*t - 1) {
-            Ref<Node<T, V, t>> s = createNode(false);
+            Ref<Node<K, V, t>> s = createNode(false);
             s->children[0] = r; // Make the old root a child of the new root
             root = s;
             splitChild(s, 0); // Splits old root and moves its middle key up to the new root
@@ -674,14 +674,14 @@ public:
      *
      * \param key The key to be removed from the B-Tree.
      */
-    void remove(T key) {
+    void remove(K key) {
         if (!root) { return; }
 
         remove(root, key);
 
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
-            Ref<Node<T, V, t>> tmp = root;
+            Ref<Node<K, V, t>> tmp = root;
             root = root->isLeaf ? REF_NULL : root->children[0];
             freeNode(tmp);
         }
