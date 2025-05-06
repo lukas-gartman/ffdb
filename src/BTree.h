@@ -453,18 +453,18 @@ private:
             // the left subtree and recursively remove the predecessor from the left child
             KeyValue<T, V> predecessor = getInOrderPredecessor(parent, i);
             parent->keyValues[i] = predecessor;
-            remove(leftChild, predecessor);
+            remove(leftChild, predecessor.key);
         } else if (rightChild->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
             KeyValue<T, V> successor = getInOrderSuccessor(parent, i);
             parent->keyValues[i] = successor;
-            remove(rightChild, successor);
+            remove(rightChild, successor.key);
         } else {
             // Both children have fewer than t keys so we need to merge the right child into
             // the left child before removing the key
             merge(parent, i);
-            remove(leftChild, keyValue);
+            remove(leftChild, keyValue.key);
         }
     }
 
