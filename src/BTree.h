@@ -207,13 +207,16 @@ private:
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->isLeaf) {
+            // Check if the key already exists
+            for (int j = 0; j < x->n; ++j) {
+                if (x->keyValues[j].key == key) { return; } // Key already exists, do not insert
+            }
+
             // Shift keys to the right to make room for the new key
             while (i >= 0 && key < x->keyValues[i].key) {
                 x->keyValues[i + 1] = x->keyValues[i];
                 --i;
             }
-
-            if (x->keyValues[i].key == key) { return; } // Key already exists, do not insert
 
             // Insert the new key
             x->keyValues[i+1].key = key;
