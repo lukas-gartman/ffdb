@@ -22,7 +22,9 @@ TEST(AllocatorTest, RandomOperationsTest) {
     std::uniform_int_distribution<int> value_dist_int(1, INT_MAX);
     std::uniform_int_distribution<char> value_dist_char(1, CHAR_MAX);
 
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    std::cout << "Starting new transaction..." << std::endl;
     db.start_transaction();
 
     for (int i = 0; i < NUM_OPERATIONS; ++i) {
@@ -33,12 +35,14 @@ TEST(AllocatorTest, RandomOperationsTest) {
         if (op == 0) { // Allocate and write
             try {
                 if (type == 0 && allocations_int[index] == 0) {
+                    std::cout << "Allocating int... Storing at " << index << std::endl;
                     int value = value_dist_int(rng);
                     allocations_int[index] = db.alloc->malloc<int>();
                     *allocations_int[index] = value;
                     ctrl_vals_int[index] = value;
                 }
                 else if (type == 1 && allocations_char[index] == 0) {
+                    std::cout << "Allocating char... Storing at " << index << std::endl;
                     char value = value_dist_char(rng);
                     allocations_char[index] = db.alloc->malloc<char>();
                     *allocations_char[index] = value;
@@ -51,10 +55,12 @@ TEST(AllocatorTest, RandomOperationsTest) {
         } else if (op == 1) { // Free
             try {
                 if (type == 0 && allocations_int[index] != 0) {
+                    std::cout << "Freeing int at index " << index << std::endl;
                     db.alloc->free<int>(allocations_int[index]);
                     allocations_int[index] = 0;
                     ctrl_vals_int[index] = 0;
                 } else if (type == 1 && allocations_char[index] != 0) {
+                    std::cout << "Freeing char at index " << index << std::endl;
                     db.alloc->free<char>(allocations_char[index]);
                     allocations_char[index] = 0;
                     ctrl_vals_char[index] = 0;
@@ -64,7 +70,9 @@ TEST(AllocatorTest, RandomOperationsTest) {
                 break;
             }
         } else if (op == 2) { // Commit/Start new transaction
+            std::cout << "Committing transaction..." << std::endl;
             db.commit_transaction();
+            std::cout << "Starting new transaction..." << std::endl;
             db.start_transaction();
         }
 
@@ -78,7 +86,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
             }
         }
     }
-
+    std::cout << "Committing transaction..." << std::endl;
     db.commit_transaction();
 
     remove("test.db");

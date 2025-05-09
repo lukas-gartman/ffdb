@@ -20,7 +20,7 @@ public:
     constexpr static size_t MIN_PAGE_SIZE = PAGE_SIZE * 2;
 
     // TODO: Make read only outside of class.
-    MemState *state;
+    MemState *shared_state;
 
     MemoryMapping(
         std::string filepath,
@@ -31,8 +31,11 @@ public:
 
     ~MemoryMapping();
 
-    void init_transaction(Transaction *txn);
-    void commit_transaction(Transaction *txn);
+    void init_txn(Transaction *txn);
+    void rollback_txn(Transaction *txn);
+    void commit_txn(Transaction *txn);
+
+    void resize_map();
 
     size_t get_size() const noexcept {
         return size;

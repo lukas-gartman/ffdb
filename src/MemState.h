@@ -50,7 +50,7 @@ struct BlockDescr {
 };
 
 struct MemState {
-    std::size_t file_size;
+    std::size_t mmap_size;
 
     std::size_t curr_txn_id;
     std::size_t min_txn_id;
