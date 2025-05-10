@@ -171,7 +171,7 @@ size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
 
 void MemoryMapping::resize_map() {
     shared_state->resize_rw_lock.write_lock();
-    std::cout << "resize" << std::endl;
+
     // It may happen that another process already resized the map, in
     // that case we only need to remap the memory and update size.
     const size_t new_size =
@@ -184,6 +184,10 @@ void MemoryMapping::resize_map() {
             throw std::runtime_error("Errno: " + std::to_string(errno));
         }
     }
+
+    // In case mremap fails, we have still made the file larger and
+    // need to signal this to other processes.
+    shared_state->mmap_size = new_size;
 
     // Remap everything except the first page
     auto *new_base = (unsigned char *) mremap(
@@ -199,7 +203,6 @@ void MemoryMapping::resize_map() {
     }
 
     size = new_size;
-    shared_state->mmap_size = new_size;
     base = new_base;
     current_base = (unsigned char *) new_base;
 
