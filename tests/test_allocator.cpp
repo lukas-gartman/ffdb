@@ -110,3 +110,154 @@ TEST(AllocatorTest, RandomOperationsTest) {
 
     remove("test.db");
 }
+
+// Tests allocation on the top.
+TEST(AllocatorTest, TestAllocFreeTop) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_transaction();
+    auto a1 = db.alloc->malloc<uint64_t>();
+    auto b1 = db.alloc->malloc<uint32_t>();
+    auto c1 = db.alloc->malloc<uint16_t>();
+    auto d1 = db.alloc->malloc<uint8_t>();
+
+    *a1 = 0xAAAAAAAAAAAAAAAA;
+    *b1 = 0xBBBBBBBB;
+    *c1 = 0xCCCC;
+    *d1 = 0xDD;
+
+    EXPECT_EQ(*a1, 0xAAAAAAAAAAAAAAAA);
+    EXPECT_EQ(*b1, 0xBBBBBBBB);
+    EXPECT_EQ(*c1, 0xCCCC);
+    EXPECT_EQ(*d1, 0xDD);
+
+    db.alloc->free<uint8_t>(d1);
+    db.alloc->free<uint16_t>(c1);
+    db.alloc->free<uint32_t>(b1);
+    db.alloc->free<uint64_t>(a1);
+
+    auto a2 = db.alloc->malloc<uint8_t>();
+    auto b2 = db.alloc->malloc<uint64_t>();
+    auto c2 = db.alloc->malloc<uint16_t>();
+    auto d2 = db.alloc->malloc<uint32_t>();
+
+    *a2 = 0xAA;
+    *b2 = 0xBBBBBBBBBBBBBBBB;
+    *c2 = 0xCCCC;
+    *d2 = 0xDDDDDDDD;
+
+    EXPECT_EQ(*a1, 0xBBBBBBBBBBBBBBAA);
+    EXPECT_EQ(*b1, 0xDDCCCCBB);
+    EXPECT_EQ(*c1, 0xDDDD);
+    EXPECT_EQ(*d1, 0xDD);
+
+    EXPECT_EQ(*a2, 0xAA);
+    EXPECT_EQ(*b2, 0xBBBBBBBBBBBBBBBB);
+    EXPECT_EQ(*c2, 0xCCCC);
+    EXPECT_EQ(*d2, 0xDDDDDDDD);
+
+    db.commit_transaction();
+
+    remove("test.db");
+}
+
+TEST(AllocatorTest, TestFreeMergeLFBlock) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_transaction();
+    auto a = db.alloc->malloc<uint8_t>();
+    auto b = db.alloc->malloc<uint8_t>();
+    auto c = db.alloc->malloc<uint8_t>();
+    auto d = db.alloc->malloc<uint8_t>();
+
+    *a = 0xAA;
+    *b = 0xBB;
+    *c = 0xCC;
+    *d = 0xDD;
+
+    EXPECT_EQ(*a, 0xAA);
+    EXPECT_EQ(*b, 0xBB);
+    EXPECT_EQ(*c, 0xCC);
+    EXPECT_EQ(*d, 0xDD);
+
+    db.alloc->free<uint8_t>(b);
+    db.alloc->free<uint8_t>(c); // Merge down
+    db.alloc->free<uint8_t>(a); // Merge up
+
+    // Allocate exactly the freed space and rearrange bytes
+    auto abc = db.alloc->malloc<uint8_t>(2); // uint8_t[2]
+    abc[0] = 0xBB;
+    abc[1] = 0xCC;
+    abc[2] = 0xAA;
+
+    EXPECT_EQ(*a, abc[0]);
+    EXPECT_EQ(*b, abc[1]);
+    EXPECT_EQ(*c, abc[2]);
+    EXPECT_EQ(*d, 0xDD);
+
+    db.alloc->free<uint8_t>(abc, 2);
+    db.alloc->free<uint8_t>(d); // Merge top
+
+    auto abcd = db.alloc->malloc<uint32_t>();
+    *abcd = 0xAABBCCDD;
+    EXPECT_EQ(*a, 0xDD);
+    EXPECT_EQ(*b, 0xCC);
+    EXPECT_EQ(*c, 0xBB);
+    EXPECT_EQ(*d, 0xAA);
+    EXPECT_EQ(*abcd, 0xAABBCCDD);
+
+    db.commit_transaction();
+
+    remove("test.db");
+}
+
+TEST(AllocatorTest, TestResize) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_transaction();
+
+    EXPECT_EQ(db.mem_mapping->shared_state->mmap_size, 4096);
+
+    for (int i = 0; i < 4096/sizeof(uint64_t) - 1; ++i) {
+        db.alloc->malloc<uint64_t>();
+    }
+    EXPECT_EQ(db.mem_mapping->shared_state->mmap_size, 4096);
+
+    db.commit_transaction();
+
+    EXPECT_EQ(db.mem_mapping->shared_state->top, 4096 - sizeof(uint64_t) + 1); // Alloc starts at 1
+
+    db.start_transaction();
+
+    db.alloc->malloc<uint64_t>();
+    EXPECT_GT(db.mem_mapping->shared_state->mmap_size, 4096); // Size only increases if db file was resized.
+
+    db.commit_transaction();
+
+    remove("test.db");
+}
+
+// Tests if top is correctly reset after rollback.
+TEST(AllocatorTest, TestRollbackTop) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_transaction();
+    auto a = db.alloc->malloc<int>();
+    auto b = db.alloc->malloc<int>();
+    *a = 5;
+    *b = 10;
+    db.rollback_transaction();
+
+    db.start_transaction();
+    EXPECT_EQ(*a, 5);
+    EXPECT_EQ(*b, 10);
+    a = db.alloc->malloc<int>();
+    b = db.alloc->malloc<int>();
+    *a = 15;
+    *b = 20;
+    EXPECT_EQ(*a, 15);
+    EXPECT_EQ(*b, 20);
+    db.commit_transaction();
+
+    remove("test.db");
+}
