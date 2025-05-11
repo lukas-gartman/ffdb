@@ -22,7 +22,6 @@ shared_state(nullptr) {
     if (fd == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
-    // Get map size
     size = lseek(fd, 0, SEEK_END);
     if (size == -1) {
         cleanup();

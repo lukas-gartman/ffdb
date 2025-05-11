@@ -10,6 +10,10 @@ void FFDB::start_transaction() {
     alloc->start_transaction();
 }
 
+void FFDB::rollback_transaction() {
+    alloc->rollback_transaction();
+}
+
 void FFDB::commit_transaction() {
     alloc->commit_transaction();
 }

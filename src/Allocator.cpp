@@ -115,6 +115,17 @@ void Allocator::start_transaction() {
     curr_txn = txn;
 }
 
+void Allocator::rollback_transaction() {
+    if (curr_txn == nullptr)
+        throw std::runtime_error("No transaction to end");
+
+    mmap->rollback_txn(curr_txn);
+
+    delete curr_txn;
+    curr_txn = nullptr;
+}
+
+
 void Allocator::commit_transaction() {
     if (curr_txn == nullptr)
         throw std::runtime_error("No transaction to end");

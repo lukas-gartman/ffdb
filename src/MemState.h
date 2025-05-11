@@ -49,6 +49,13 @@ struct BlockDescr {
     std::size_t txn_id;
 };
 
+struct Revision {
+    pid_t pid;
+    uint32_t ref_count;
+    Object root;
+    size_t txn_id;
+};
+
 struct MemState {
     std::size_t mmap_size;
 

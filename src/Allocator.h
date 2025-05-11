@@ -20,6 +20,7 @@ public:
     }
 
     void start_transaction();
+    void rollback_transaction();
     void commit_transaction();
 
     void dump_block_descrs();
