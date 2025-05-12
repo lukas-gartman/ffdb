@@ -67,6 +67,7 @@ struct KeyValue {
     private:
         KeyValue<K, V> keyValues[2*t-1];
         Ref<Node> children[2*t];
+        size_t txn_id;
         int n; // Number of keys in the node
         bool isLeaf;
     public:
@@ -103,6 +104,7 @@ private:
     Ref<Node<K, V, t>> createNode(bool isLeaf) {
         Ref<Node<K, V, t>> node = allocator->malloc<Node<K, V, t>>();
         node->isLeaf = isLeaf;
+        node->txn_id = allocator->get_txn_id();
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
             node->keyValues[i].key = K();
@@ -193,6 +195,21 @@ private:
     }
 
     /**
+     * \brief Creates a copy of a given node.
+     * \details Allocates memory for a new node, copies the contents of the given node into the new node,
+     *          and updates the transaction ID of the new node to the current transaction ID.
+     *
+     * \param node The Ref to the node to be copied.
+     * \return A Ref to the newly created copy of the node.
+     */
+    Ref<Node<K, V, t>> copyNode(Ref<Node<K, V, t>> node) {
+        Ref<Node<K, V, t>> x = allocator->malloc<Node<K, V, t>>();
+        *x = *node;
+        x->txn_id = allocator->get_txn_id();
+        return x;
+    }
+
+    /**
      * \brief Inserts a key-value pair into a non-full node.
      * \details This function handles the insertion of a key-value pair into a node that is not full.
      *          If the node is a leaf, the pair is directly inserted into the correct position.
@@ -228,8 +245,12 @@ private:
             while (i >= 0 && key < x->keyValues[i].key) {
                 --i;
             }
-
             ++i; // Increment i to find the child
+
+            // Copy-on-write
+            if (allocator->get_txn_id() != x->children[i]->txn_id) {
+                x->children[i] = copyNode(x->children[i]);
+            }
 
             // Split the child if it is full
             if (x->children[i]->n == 2*t - 1) {
@@ -610,6 +631,8 @@ private:
     }
 
 public:
+    BTree() : root(REF_NULL), allocator(nullptr), _size(0) { }
+
     /**
      * \brief Constructs a BTree with a given allocator.
      * \details Initializes the BTree with the provided memory allocator and creates an empty root node.
@@ -636,34 +659,42 @@ public:
     }
 
     /**
-     * \brief Inserts a key-value pair into the B-Tree.
-     * \details This function inserts a key-value pair into the B-Tree, ensuring that the tree maintains
-     *          its properties. If the root node is full, it is split, and a new root is created.
-     *          The key-value pair is then inserted into the appropriate position in the tree.
-     *
-     * \param key The key to be inserted into the B-Tree.
-     * \param value The value associated with the key to be inserted.
-     */
-    void insert(K key, V value) {
-        Ref<Node<K, V, t>> r = root;
-        if (r == REF_NULL) {
+    * \brief Inserts a key-value pair into the B-Tree.
+    * \details This function inserts a key-value pair into the B-Tree, ensuring that the tree maintains
+    *          its properties. If the root node is full, it is split, and a new root is created.
+    *          The key-value pair is then inserted into the appropriate position in the tree.
+    *          The function also implements copy-on-write and returns the updated root of the B-Tree.
+    *
+    * \param key The key to be inserted into the B-Tree.
+    * \param value The value associated with the key to be inserted.
+    * \return The updated root of the B-Tree.
+    */
+    BTree insert(K key, V value) {
+        if (root == REF_NULL) {
             root = createNode(true);
             root->keyValues[0].key = key;
             root->keyValues[0].value = value;
             root->n = 1;
-            return;
+            return *this;
+        }
+
+        // Copy-on-write
+        if (allocator->get_txn_id() != root->txn_id) {
+            root = copyNode(root);
         }
 
         // Check if the root is full and needs to be split
-        if (r->n == 2*t - 1) {
+        if (root->n == 2*t - 1) {
             Ref<Node<K, V, t>> s = createNode(false);
-            s->children[0] = r; // Make the old root a child of the new root
+            s->children[0] = root; // Make the old root a child of the new root
             root = s;
             splitChild(s, 0); // Splits old root and moves its middle key up to the new root
             insertNonFull(s, key, value);
         } else {
-            insertNonFull(r, key, value);
+            insertNonFull(root, key, value);
         }
+
+        return *this;
     }
 
     /**

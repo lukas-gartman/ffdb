@@ -21,6 +21,7 @@ public:
 
     void start_transaction();
     void commit_transaction();
+    size_t get_txn_id() const;
 
     void dump_block_descrs();
 

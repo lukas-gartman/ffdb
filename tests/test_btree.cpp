@@ -10,33 +10,68 @@
 #include <unordered_set>
 
 TEST(BTreeTest, InsertTest) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
     db.start_transaction();
-
     BTree::BTree<int, float, 3> tree(db.alloc);
-
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
     tree.insert(5,  3.0f);
-    tree.insert(6,  4.0f);
+    auto newTree = tree.insert(6,  4.0f);
+    EXPECT_TRUE(tree.search(10));
+    EXPECT_TRUE(tree.search(20));
+    EXPECT_TRUE(tree.search(5));
+    EXPECT_TRUE(tree.search(6));
+
+    db.commit_transaction();
+    db.start_transaction();
+
     tree.insert(12, 5.0f);
     tree.insert(30, 6.0f);
     tree.insert(7,  7.0f);
     tree.insert(17, 8.0f);
 
-    EXPECT_TRUE(tree.search(10));
-    EXPECT_TRUE(tree.search(20));
-    EXPECT_TRUE(tree.search(5));
-    EXPECT_TRUE(tree.search(6));
     EXPECT_TRUE(tree.search(12));
     EXPECT_TRUE(tree.search(30));
     EXPECT_TRUE(tree.search(7));
     EXPECT_TRUE(tree.search(17));
     EXPECT_FALSE(tree.search(15));
 
+    EXPECT_TRUE(newTree.size() == 4);
+    EXPECT_TRUE(tree.size() == 8);
+
     tree.print();
 
     db.commit_transaction();
+
+    remove("test.db");
+}
+
+TEST(BTreeTest, Transactions) {
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 1024);
+
+    constexpr int numTransactions = 1000;
+    BTree::BTree<int, float, 3> trees[numTransactions];
+
+    db.start_transaction();
+    trees[0] = BTree::BTree<int, float, 3>(db.alloc);
+    db.commit_transaction();
+
+    for (int i = 1; i < numTransactions; i++) {
+        db.start_transaction();
+        trees[i] = trees[i-1].insert(i, .5f + i);
+        db.commit_transaction();
+    }
+
+    db.start_transaction();
+    trees[numTransactions-1].insert(numTransactions, 1337.0f);
+    db.commit_transaction();
+
+    for (int t = 0; t < numTransactions; t++) {
+        EXPECT_EQ(trees[t].size(), t + 1);
+    }
 
     remove("test.db");
 }

@@ -130,6 +130,13 @@ void Allocator::commit_transaction() {
     curr_txn = nullptr;
 }
 
+size_t Allocator::get_txn_id() const {
+    if (curr_txn == nullptr)
+        throw std::runtime_error("No transaction started");
+
+    return curr_txn->id;
+}
+
 Ref<BlockDescr> Allocator::new_block_descr(Block block) {
     Ref<BlockDescr> descr = 0;
 
