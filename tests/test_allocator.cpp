@@ -216,21 +216,21 @@ TEST(AllocatorTest, TestResize) {
 
     db.start_transaction();
 
-    EXPECT_EQ(db.mem_mapping->shared_state->mmap_size, 4096);
+    EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
 
     for (int i = 0; i < 4096/sizeof(uint64_t) - 1; ++i) {
         db.alloc->malloc<uint64_t>();
     }
-    EXPECT_EQ(db.mem_mapping->shared_state->mmap_size, 4096);
+    EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
 
     db.commit_transaction();
 
-    EXPECT_EQ(db.mem_mapping->shared_state->top, 4096 - sizeof(uint64_t) + 1); // Alloc starts at 1
+    EXPECT_EQ(db.mmap->shared_state->top, 4096 - sizeof(uint64_t) + 1); // Alloc starts at 1
 
     db.start_transaction();
 
     db.alloc->malloc<uint64_t>();
-    EXPECT_GT(db.mem_mapping->shared_state->mmap_size, 4096); // Size only increases if db file was resized.
+    EXPECT_GT(db.mmap->shared_state->mmap_size, 4096); // Size only increases if db file was resized.
 
     db.commit_transaction();
 

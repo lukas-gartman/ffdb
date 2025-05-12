@@ -10,6 +10,7 @@ private:
     size_t size;
     unsigned char *base;
     std::string filepath;
+    pid_t pid; // Store so we won't have to call getpid() which is a syscall every time.
 
     static size_t calc_mem_map_size(size_t init_size);
 
@@ -30,6 +31,9 @@ public:
     );
 
     ~MemoryMapping();
+
+    Ref<Revision> register_revision(Object root, size_t txn_id);
+    void unregister_revision(Ref<Revision> rev);
 
     void init_txn(Transaction *txn);
     void rollback_txn(Transaction *txn);

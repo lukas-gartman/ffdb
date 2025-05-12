@@ -13,6 +13,7 @@ fd(-1),
 size(0),
 base(nullptr),
 filepath(std::move(filepath)),
+pid(getpid()),
 shared_state(nullptr) {
     if (this->filepath.empty()) throw std::invalid_argument("filepath is empty");
 
@@ -65,13 +66,87 @@ shared_state(nullptr) {
         shared_state->resize_rw_lock.init();
 
         shared_state->top = 1; // 0 is null
-        shared_state->free_blocks = 0;
-        shared_state->free_descrs = 0;
+
+        // The rest is zeroed by ftruncate
     }
 }
 
 MemoryMapping::~MemoryMapping() {
     cleanup();
+}
+
+Ref<Revision> MemoryMapping::register_revision(Object root, size_t txn_id) {
+    shared_state->rev_lock.lock();
+
+    Revision *found_rev = nullptr;
+    bool found = false;
+
+    shared_state->min_txn_id = SIZE_MAX;
+    for (size_t i = 0; i < shared_state->revision_count; i++) {
+        Revision *curr_rev = &shared_state->revisions[i];
+
+        if (curr_rev->ref_count == 0) {
+            if (found_rev == nullptr) found_rev = curr_rev;
+        }
+        else {
+            if (curr_rev->pid == pid &&
+                curr_rev->root == root) {
+
+                curr_rev->ref_count++;
+                curr_rev->txn_id = txn_id;
+                found_rev = curr_rev;
+                found = true;
+            }
+
+            if (shared_state->min_txn_id > curr_rev->txn_id)
+                shared_state->min_txn_id = curr_rev->txn_id;
+        }
+    }
+
+    if (!found) {
+        if (found_rev == nullptr) {
+            size_t max_revisions = (PAGE_SIZE - sizeof(MemState)) / sizeof(Revision);
+            if (shared_state->revision_count >= max_revisions) {
+                shared_state->rev_lock.unlock();
+                throw std::runtime_error("No more revisions available");
+            }
+            found_rev = &shared_state->revisions[shared_state->revision_count++];
+        }
+
+        found_rev->pid = pid;
+        found_rev->root = root;
+        found_rev->ref_count = 1;
+        found_rev->txn_id = txn_id;
+
+        if (shared_state->min_txn_id > txn_id)
+            shared_state->min_txn_id = txn_id;
+    }
+
+    shared_state->rev_lock.unlock();
+
+    return (found_rev - shared_state->revisions) + 1;
+}
+
+void MemoryMapping::unregister_revision(Ref<Revision> rev) {
+    shared_state->rev_lock.lock();
+
+    rev->ref_count--;
+    if (rev->ref_count == 0) {
+        while (shared_state->revisions[shared_state->revision_count - 1].ref_count == 0) {
+            shared_state->revision_count--;
+            if (shared_state->revision_count == 0) break;
+        }
+    }
+
+    shared_state->min_txn_id = SIZE_MAX;
+    for (size_t i = 0; i < shared_state->revision_count; i++) {
+        Revision *curr_rev = &shared_state->revisions[i];
+
+        if (curr_rev->ref_count > 0 && shared_state->min_txn_id > curr_rev->txn_id)
+            shared_state->min_txn_id = curr_rev->txn_id;
+    }
+
+    shared_state->rev_lock.unlock();
 }
 
 void MemoryMapping::init_txn(Transaction *txn) {

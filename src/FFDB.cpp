@@ -2,8 +2,16 @@
 #include <iostream>
 
 FFDB::FFDB(std::string filepath, int flags, int mode, size_t init_size) {
-    mem_mapping = new MemoryMapping(std::move(filepath), flags, mode, init_size);
-    alloc = new Allocator(mem_mapping);
+    mmap = new MemoryMapping(std::move(filepath), flags, mode, init_size);
+    alloc = new Allocator(mmap);
+}
+
+Ref<Revision> FFDB::register_revision(Object root, size_t txn_id) {
+    return mmap->register_revision(root, txn_id);
+}
+
+void FFDB::unregister_revision(Ref<Revision> rev) {
+    mmap->unregister_revision(rev);
 }
 
 void FFDB::start_transaction() {

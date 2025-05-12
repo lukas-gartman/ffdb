@@ -66,9 +66,13 @@ struct MemState {
     Mutex rev_lock;
     RWLock resize_rw_lock;
 
-    Object top;              // Top of the memory map
-    Ref<BlockDescr> free_blocks;        // List of free block descriptors
-    Ref<BlockDescr> free_descrs; // List of unused block descriptors
+    Object top;
+    Ref<BlockDescr> free_blocks;
+    Ref<BlockDescr> free_descrs;
+
+    size_t revision_count;
+    Ref<Revision> active_revision;
+    Revision revisions[];
 };
 
 #endif //DBSTATE_H
