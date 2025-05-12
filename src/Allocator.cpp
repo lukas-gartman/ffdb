@@ -16,7 +16,7 @@ Object Allocator::malloc_internal(std::size_t bytes) {
     // Check if there is a free block cached that can be used.
     if (curr_txn->lf_block.obj != 0 &&
         curr_txn->lf_block.size >= bytes &&
-        curr_txn->lf_block.txn_id < mmap->state->min_txn_id) {
+        curr_txn->lf_block.txn_id < mmap->shared_state->min_txn_id) {
 
         obj = curr_txn->lf_block.obj;
         curr_txn->lf_block.obj += bytes;
@@ -36,9 +36,8 @@ Object Allocator::malloc_internal(std::size_t bytes) {
 
     // The above failed. Get memory from the top.
     std::size_t free_size = mmap->get_size() - curr_txn->top;
-    // TODO: Temp until we can resize the memory map
     if (bytes > free_size)
-        throw std::out_of_range("Block size too large");
+        mmap->resize_map();
 
     obj = curr_txn->top;
     curr_txn->top += bytes;
@@ -52,7 +51,7 @@ void Allocator::free_internal(Object obj, std::size_t bytes) {
 
     if (obj == 0) return;
 
-    size_t txn_id = (obj >= mmap->state->top) ? 0 : curr_txn->id;
+    size_t txn_id = (obj >= mmap->shared_state->top) ? 0 : curr_txn->id;
 
     if (txn_id == 0 && obj + bytes == curr_txn->top) {
         curr_txn->top -= bytes;
@@ -111,7 +110,7 @@ void Allocator::start_transaction() {
         throw std::runtime_error("A transaction is already active");
 
     auto *txn = new Transaction();
-    mmap->init_transaction(txn);
+    mmap->init_txn(txn);
 
     curr_txn = txn;
 }
@@ -125,7 +124,7 @@ void Allocator::commit_transaction() {
         curr_txn->lf_block = {0, 0, 0};
     }
 
-    mmap->commit_transaction(curr_txn);
+    mmap->commit_txn(curr_txn);
 
     delete curr_txn;
     curr_txn = nullptr;
@@ -138,8 +137,7 @@ size_t Allocator::get_txn_id() const {
     return curr_txn->id;
 }
 
-Ref<BlockDescr>
-Allocator::new_block_descr(Block block) {
+Ref<BlockDescr> Allocator::new_block_descr(Block block) {
     Ref<BlockDescr> descr = 0;
 
     if (curr_txn->unused_descrs != 0) {
@@ -147,12 +145,12 @@ Allocator::new_block_descr(Block block) {
         curr_txn->unused_descrs =
                 curr_txn->unused_descrs->next_unused;
     }
-    else {
+    else { // TODO: Error because top is not remapped?
         // Allocate a new block descriptor
         const size_t free_size = mmap->get_size() - curr_txn->top;
-        // TODO: Temp until we can resize the memory map
-        if (block.size > free_size)
-            throw std::out_of_range("Block size too large");
+
+        if (sizeof(BlockDescr) > free_size)
+            mmap->resize_map();
 
         descr = curr_txn->top;
         curr_txn->top += sizeof(BlockDescr);
@@ -175,10 +173,13 @@ Ref<BlockDescr> Allocator::upd_block_descr(Ref<BlockDescr> descr) {
     // a rollback, this descriptor will still have its old position in
     // the free list from before the start of the current_transaction.
     descr->next_unused = curr_txn->pending_unused_descrs;
+    curr_txn->pending_unused_descrs = descr;
     if (curr_txn->pending_unused_last == 0)
         curr_txn->pending_unused_last = descr;
 
     Ref<BlockDescr> new_descr = new_block_descr(descr->block);
+    new_descr->next_free = descr->next_free;
+    new_descr->txn_id = curr_txn->id;
 
     return new_descr;
 }
@@ -237,13 +238,24 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
     while (curr_descr != 0) {
         bool found =
             curr_descr->block.size >= block_size &&
-            curr_descr->block.txn_id < mmap->state->min_txn_id;
+            curr_descr->block.txn_id < mmap->shared_state->min_txn_id;
 
         if (found) break;
 
         prev_descr = curr_descr;
         curr_descr = curr_descr->next_free;
     }
+
+    //std::cout << curr_descr.as_object() << std::endl;
+
+    /*if (curr_descr != 0) {
+        std::cout << "Block size needed: " << block_size << std::endl;
+        std::cout << "  Block: " << curr_descr->block.obj
+                  << ", Size: " << curr_descr->block.size
+                  << ", Txn ID: " << curr_descr->block.txn_id
+                  << std::endl;
+        dump_block_descrs();
+    }*/
 
     Ref<BlockDescr> best_fit = curr_descr;
 
@@ -289,20 +301,22 @@ Object Allocator::delete_block_descr(std::size_t block_size) {
     // Block offset to return
     Object offset = curr_descr->block.obj;
 
-    curr_descr->block.obj += block_size;
-    curr_descr->block.size -= block_size;
+    auto found_block = curr_descr->block;
 
-    Block block_left = curr_descr->block;
+    // TODO: Rethink entire function
+
+    found_block.obj += block_size;
+    found_block.size -= block_size;
 
     // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
-    if (block_left.size != 0) {
+    if (found_block.size != 0) {
         if (curr_txn->lf_block.obj != 0) {
             insert_block_descr(curr_txn->lf_block);
         }
-        curr_txn->lf_block.obj = block_left.obj;
-        curr_txn->lf_block.size = block_left.size;
-        curr_txn->lf_block.txn_id = block_left.txn_id;
+        curr_txn->lf_block.obj = found_block.obj;
+        curr_txn->lf_block.size = found_block.size;
+        curr_txn->lf_block.txn_id = found_block.txn_id;
     }
 
     return offset;
@@ -314,7 +328,7 @@ void Allocator::dump_block_descrs() {
 
     std::cout << "---- Shared state:" << std::endl;
     std::cout << "-- Free blocks:" << std::endl;
-    auto block_descr = mmap->state->free_blocks;
+    auto block_descr = mmap->shared_state->free_blocks;
     while (block_descr != 0) {
         std::cout << "  Block: " << block_descr->block.obj
                   << ", Size: " << block_descr->block.size
@@ -325,7 +339,7 @@ void Allocator::dump_block_descrs() {
     std::cout << std::endl;
 
     std::cout << "-- Unused descrs:" << std::endl;
-    block_descr = mmap->state->free_descrs;
+    block_descr = mmap->shared_state->free_descrs;
     while (block_descr != 0) {
         std::cout << "  Block: " << block_descr->block.obj
                   << ", Size: " << block_descr->block.size

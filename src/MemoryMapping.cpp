@@ -13,7 +13,7 @@ fd(-1),
 size(0),
 base(nullptr),
 filepath(std::move(filepath)),
-state(nullptr) {
+shared_state(nullptr) {
     if (this->filepath.empty()) throw std::invalid_argument("filepath is empty");
 
     bool is_new = false;
@@ -39,35 +39,35 @@ state(nullptr) {
         is_new = true;
     }
 
-    state = (MemState *)
+    shared_state = (MemState *)
         mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
 
-    if (state == MAP_FAILED) {
+    if (shared_state == MAP_FAILED) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    if (mprotect(state, PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
+    if (mprotect(shared_state, PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
     size -= PAGE_SIZE;
-    base = ((unsigned char *) state) + PAGE_SIZE;
+    base = ((unsigned char *) shared_state) + PAGE_SIZE;
 
     if (is_new) {
-        state->file_size = size;
+        shared_state->mmap_size = size;
 
-        state->curr_txn_id = 1;
-        state->min_txn_id = 1;
+        shared_state->curr_txn_id = 1;
+        shared_state->min_txn_id = 1;
 
-        state->write_lock.init();
-        state->rev_lock.init();
-        state->resize_rw_lock.init();
+        shared_state->write_lock.init();
+        shared_state->rev_lock.init();
+        shared_state->resize_rw_lock.init();
 
-        state->top = 1; // 0 is null
-        state->free_blocks = 0;
-        state->free_descrs = 0;
+        shared_state->top = 1; // 0 is null
+        shared_state->free_blocks = 0;
+        shared_state->free_descrs = 0;
     }
 }
 
@@ -75,18 +75,21 @@ MemoryMapping::~MemoryMapping() {
     cleanup();
 }
 
-void MemoryMapping::init_transaction(Transaction *txn) {
-    state->write_lock.lock();
+void MemoryMapping::init_txn(Transaction *txn) {
+    if (txn == nullptr)
+        throw std::runtime_error("No transaction started!");
+
+    shared_state->write_lock.lock();
 
     if (mprotect(base, size, PROT_READ | PROT_WRITE) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
     current_base = base;
 
-    txn->id = state->curr_txn_id;
-    txn->top = state->top;
-    txn->free_blocks = state->free_blocks;
-    txn->unused_descrs = state->free_descrs;
+    txn->id = shared_state->curr_txn_id;
+    txn->top = shared_state->top;
+    txn->free_blocks = shared_state->free_blocks;
+    txn->unused_descrs = shared_state->free_descrs;
     txn->pending_unused_descrs = 0;
     txn->pending_unused_last = 0;
     txn->lf_block.obj = 0;
@@ -94,10 +97,25 @@ void MemoryMapping::init_transaction(Transaction *txn) {
     txn->lf_block.txn_id = 0;
 }
 
-void MemoryMapping::commit_transaction(Transaction *txn) {
-    auto saved_top = state->top;
-    auto saved_free_list = state->free_blocks;
-    auto saved_free_descriptors = state->free_descrs;
+void MemoryMapping::rollback_txn(Transaction *txn) {
+    if (txn == nullptr)
+        throw std::runtime_error("No transaction started!");
+
+    // shared_state->writer_pid = 0;
+
+    if (mprotect(base, size, PROT_READ) == -1)
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+
+    shared_state->write_lock.unlock();
+}
+
+void MemoryMapping::commit_txn(Transaction *txn) {
+    if (txn == nullptr)
+        throw std::runtime_error("No transaction started!");
+
+    auto saved_top = shared_state->top;
+    auto saved_free_list = shared_state->free_blocks;
+    auto saved_free_descriptors = shared_state->free_descrs;
 
     if (txn->pending_unused_last != 0) {
         txn->pending_unused_last->next_unused = txn->unused_descrs;
@@ -107,25 +125,25 @@ void MemoryMapping::commit_transaction(Transaction *txn) {
     if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
-    state->top = txn->top;
-    state->free_blocks = txn->free_blocks;
-    state->free_descrs = txn->unused_descrs;
-    state->curr_txn_id++;
+    shared_state->top = txn->top;
+    shared_state->free_blocks = txn->free_blocks;
+    shared_state->free_descrs = txn->unused_descrs;
+    shared_state->curr_txn_id++;
 
     if (mprotect(base, size, PROT_READ) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
     if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0) {
-        state->top = saved_top;
-        state->free_blocks = saved_free_list;
-        state->free_descrs = saved_free_descriptors;
-        state->curr_txn_id--;
+        shared_state->top = saved_top;
+        shared_state->free_blocks = saved_free_list;
+        shared_state->free_descrs = saved_free_descriptors;
+        shared_state->curr_txn_id--;
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
     // state->writer_pid = 0;
 
-    state->write_lock.unlock();
+    shared_state->write_lock.unlock();
 
 }
 
@@ -135,9 +153,9 @@ void MemoryMapping::cleanup() noexcept {
         fd = -1;
     }
 
-    if (state != nullptr) {
-        munmap(state, size);
-        state = nullptr;
+    if (shared_state != nullptr) {
+        munmap(shared_state, size);
+        shared_state = nullptr;
     }
 }
 
@@ -149,4 +167,41 @@ size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
         new_size = MIN_PAGE_SIZE;
 
     return new_size;
+}
+
+void MemoryMapping::resize_map() {
+    shared_state->resize_rw_lock.write_lock();
+    std::cout << "resize" << std::endl;
+    // It may happen that another process already resized the map, in
+    // that case we only need to remap the memory and update size.
+    const size_t new_size =
+        shared_state->mmap_size != size ? shared_state->mmap_size : size * 2;
+
+    // Should not need to check fd >= 0 as we don't support anon mappings.
+    if (shared_state->mmap_size != new_size) {
+        if (ftruncate(fd, PAGE_SIZE + new_size) == -1) {
+            shared_state->resize_rw_lock.unlock();
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+        }
+    }
+
+    // Remap everything except the first page
+    auto *new_base = (unsigned char *) mremap(
+            base,
+            size,
+            new_size,
+            MREMAP_MAYMOVE
+    );
+
+    if (new_base == MAP_FAILED) {
+        shared_state->resize_rw_lock.unlock();
+        throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
+
+    size = new_size;
+    shared_state->mmap_size = new_size;
+    base = new_base;
+    current_base = (unsigned char *) new_base;
+
+    shared_state->resize_rw_lock.unlock();
 }
