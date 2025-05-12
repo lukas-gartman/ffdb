@@ -6,11 +6,11 @@ FFDB::FFDB(std::string filepath, int flags, int mode, size_t init_size) {
     alloc = new Allocator(mmap);
 }
 
-Ref<Revision> FFDB::register_revision(Object root, size_t txn_id) {
+Revision *FFDB::register_revision(Object root, size_t txn_id) {
     return mmap->register_revision(root, txn_id);
 }
 
-void FFDB::unregister_revision(Ref<Revision> rev) {
+void FFDB::unregister_revision(Revision *rev) {
     mmap->unregister_revision(rev);
 }
 

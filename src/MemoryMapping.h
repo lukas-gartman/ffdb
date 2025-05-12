@@ -32,8 +32,8 @@ public:
 
     ~MemoryMapping();
 
-    Ref<Revision> register_revision(Object root, size_t txn_id);
-    void unregister_revision(Ref<Revision> rev);
+    Revision *register_revision(Object root, size_t txn_id);
+    void unregister_revision(Revision *rev);
 
     void init_txn(Transaction *txn);
     void rollback_txn(Transaction *txn);

@@ -75,7 +75,7 @@ MemoryMapping::~MemoryMapping() {
     cleanup();
 }
 
-Ref<Revision> MemoryMapping::register_revision(Object root, size_t txn_id) {
+Revision *MemoryMapping::register_revision(Object root, size_t txn_id) {
     shared_state->rev_lock.lock();
 
     Revision *found_rev = nullptr;
@@ -124,10 +124,10 @@ Ref<Revision> MemoryMapping::register_revision(Object root, size_t txn_id) {
 
     shared_state->rev_lock.unlock();
 
-    return (found_rev - shared_state->revisions) + 1;
+    return found_rev;
 }
 
-void MemoryMapping::unregister_revision(Ref<Revision> rev) {
+void MemoryMapping::unregister_revision(Revision *rev) {
     shared_state->rev_lock.lock();
 
     rev->ref_count--;

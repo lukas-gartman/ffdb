@@ -13,8 +13,8 @@ public:
 
     FFDB(std::string filepath, int flags, int mode, size_t init_size);
 
-    Ref<Revision> register_revision(Object root, size_t txn_id);
-    void unregister_revision(Ref<Revision> rev);
+    Revision *register_revision(Object root, size_t txn_id);
+    void unregister_revision(Revision *rev);
 
     void start_transaction();
     void rollback_transaction();
