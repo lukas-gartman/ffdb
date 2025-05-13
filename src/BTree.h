@@ -205,6 +205,7 @@ private:
     Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
         Ref<Node<K, V, t>> x = allocator->malloc<Node<K, V, t>>();
         *x = *node;
+        allocator->free(node);
         x->txn_id = allocator->get_txn_id();
         return x;
     }
