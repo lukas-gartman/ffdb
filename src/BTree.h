@@ -65,11 +65,11 @@ struct KeyValue {
     template <Comparable K, typename V, int t>
     class Node {
     private:
-        KeyValue<K, V> keyValues[2*t-1];
+        KeyValue<K, V> key_values[2*t-1];
         Ref<Node> children[2*t];
         size_t txn_id;
         int n; // Number of keys in the node
-        bool isLeaf;
+        bool is_leaf;
     public:
         friend class BTree<K, V, t>;
     };
@@ -98,16 +98,16 @@ private:
      * \brief Creates a new node in the B-Tree.
      * \details Allocates memory for a new node, initializes its properties, and sets all keys and children to default values.
      *
-     * \param isLeaf A boolean indicating whether the node is a leaf node.
+     * \param is_leaf A boolean indicating whether the node is a leaf node.
      * \return A Ref to the newly created node.
      */
-    Ref<Node<K, V, t>> createNode(bool isLeaf) {
+    Ref<Node<K, V, t>> create_node(bool is_leaf) {
         Ref<Node<K, V, t>> node = allocator->malloc<Node<K, V, t>>();
-        node->isLeaf = isLeaf;
+        node->is_leaf = is_leaf;
         node->txn_id = allocator->get_txn_id();
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
-            node->keyValues[i].key = K();
+            node->key_values[i].key = K();
             node->children[i] = REF_NULL;
         }
         node->children[2*t-1] = REF_NULL;
@@ -121,7 +121,7 @@ private:
      *
      * \param node The Ref to the node to be freed.
      */
-    void freeNode(Ref<Node<K, V, t>> node) {
+    void free_node(Ref<Node<K, V, t>> node) {
         allocator->free(node);
     }
 
@@ -136,12 +136,12 @@ private:
     Ref<Node<K, V, t>> search(Ref<Node<K, V, t>> x, K key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
-        while (i < x->n && key > x->keyValues[i].key) {
+        while (i < x->n && key > x->key_values[i].key) {
             i++;
         }
 
-        return i < x->n && key == x->keyValues[i].key ? x // Key found
-                                                      : x->isLeaf ? REF_NULL // Key not found
+        return i < x->n && key == x->key_values[i].key ? x // Key found
+                                                      : x->is_leaf ? REF_NULL // Key not found
                                                       : search(x->children[i], key); // Search in the child
     }
 
@@ -153,25 +153,25 @@ private:
      * \param x The parent node containing the child to be split.
      * \param i The index of the child node in `x` to be split.
      */
-    void splitChild(Ref<Node<K, V, t>> x, int i) {
+    void split_child(Ref<Node<K, V, t>> x, int i) {
         Ref<Node<K, V, t>> y = x->children[i];
-        Ref<Node<K, V, t>> z = createNode(y->isLeaf);
+        Ref<Node<K, V, t>> z = create_node(y->is_leaf);
         z->n = t - 1;
 
         // Copy the last t-1 keys of y to z
         for (int j = 0; j < t - 1; j++) {
-            z->keyValues[j] = y->keyValues[j + t];
+            z->key_values[j] = y->key_values[j + t];
         }
 
         // Copy the last t children of y to z
-        if (!y->isLeaf) {
+        if (!y->is_leaf) {
             for (int j = 0; j < t; j++) {
                 z->children[j] = y->children[j + t];
             }
         }
 
         // Store the middle key before reducing y's size
-        KeyValue<K, V> middleKeyValue = y->keyValues[t - 1];
+        KeyValue<K, V> middle_key_value = y->key_values[t - 1];
 
         // Reduce the number of keys in y
         y->n = t - 1;
@@ -186,11 +186,11 @@ private:
 
         // Make room for the new key in x
         for (int j = x->n - 1; j >= i; --j) {
-            x->keyValues[j + 1] = x->keyValues[j];
+            x->key_values[j + 1] = x->key_values[j];
         }
 
         // Insert the middle key of y into x
-        x->keyValues[i] = middleKeyValue;
+        x->key_values[i] = middle_key_value;
         ++x->n;
     }
 
@@ -202,7 +202,7 @@ private:
      * \param node The Ref to the node to be copied.
      * \return A Ref to the newly created copy of the node.
      */
-    Ref<Node<K, V, t>> copyNode(Ref<Node<K, V, t>> node) {
+    Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
         Ref<Node<K, V, t>> x = allocator->malloc<Node<K, V, t>>();
         *x = *node;
         x->txn_id = allocator->get_txn_id();
@@ -220,50 +220,50 @@ private:
      * \param key The key to be inserted.
      * \param value The value associated with the key.
      */
-    void insertNonFull(Ref<Node<K, V, t>> x, K key, V value) {
+    void insert_non_full(Ref<Node<K, V, t>> x, K key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
-        if (x->isLeaf) {
+        if (x->is_leaf) {
             // Check if the key already exists
             for (int j = 0; j < x->n; ++j) {
-                if (x->keyValues[j].key == key) { return; } // Key already exists, do not insert
+                if (x->key_values[j].key == key) { return; } // Key already exists, do not insert
             }
 
             // Shift keys to the right to make room for the new key
-            while (i >= 0 && key < x->keyValues[i].key) {
-                x->keyValues[i + 1] = x->keyValues[i];
+            while (i >= 0 && key < x->key_values[i].key) {
+                x->key_values[i + 1] = x->key_values[i];
                 --i;
             }
 
             // Insert the new key
-            x->keyValues[i+1].key = key;
-            x->keyValues[i+1].value = value;
+            x->key_values[i+1].key = key;
+            x->key_values[i+1].value = value;
             x->n = x->n + 1;
             ++_size;
         } else {
             // Find the child to insert the new key
-            while (i >= 0 && key < x->keyValues[i].key) {
+            while (i >= 0 && key < x->key_values[i].key) {
                 --i;
             }
             ++i; // Increment i to find the child
 
             // Copy-on-write
             if (allocator->get_txn_id() != x->children[i]->txn_id) {
-                x->children[i] = copyNode(x->children[i]);
+                x->children[i] = copy_node(x->children[i]);
             }
 
             // Split the child if it is full
             if (x->children[i]->n == 2*t - 1) {
-                splitChild(x, i);
+                split_child(x, i);
 
                 // Determine which of the two children to insert the new key into
-                if (key > x->keyValues[i].key) {
+                if (key > x->key_values[i].key) {
                     ++i;
                 }
             }
 
             // Insert the new key into the appropriate child
-            insertNonFull(x->children[i], key, value);
+            insert_non_full(x->children[i], key, value);
         }
     }
 
@@ -276,13 +276,13 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order predecessor key-value pair.
      */
-    KeyValue<K, V> getInOrderPredecessor(Ref<Node<K, V, t>> node, int i) {
+    KeyValue<K, V> get_in_order_predecessor(Ref<Node<K, V, t>> node, int i) {
         // Find the rightmost child of the left child
         Ref<Node<K, V, t>> current = node->children[i];
-        while (!current->isLeaf) {
+        while (!current->is_leaf) {
             current = current->children[current->n];
         }
-        return current->keyValues[current->n - 1];
+        return current->key_values[current->n - 1];
     }
 
     /**
@@ -294,13 +294,13 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order successor key-value pair.
      */
-    KeyValue<K, V> getInOrderSuccessor(Ref<Node<K, V, t>> node, int i) {
+    KeyValue<K, V> get_in_order_successor(Ref<Node<K, V, t>> node, int i) {
         // Find the leftmost child of the right child
         Ref<Node<K, V, t>> current = node->children[i + 1];
-        while (!current->isLeaf) {
+        while (!current->is_leaf) {
             current = current->children[0];
         }
-        return current->keyValues[0];
+        return current->key_values[0];
     }
 
     /**
@@ -312,16 +312,16 @@ private:
      * \param parent The parent node containing the child to be rebalanced.
      * \param i The index of the child node in the parent node's children array.
      */
-    void rebalanceNode(Ref<Node<K, V, t>> parent, int i) {
-        Ref<Node<K, V, t>> leftSibling = i != 0 ? parent->children[i - 1] : REF_NULL;
-        Ref<Node<K, V, t>> rightSibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
+    void rebalance_node(Ref<Node<K, V, t>> parent, int i) {
+        Ref<Node<K, V, t>> left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
+        Ref<Node<K, V, t>> right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
 
         // Move a key from an immediate sibling if it has enough keys
-        if (leftSibling && leftSibling->n >= t) {
+        if (left_sibling && left_sibling->n >= t) {
             // Left sibling has enough keys, move a key from it
-            moveKeyAndChildFromLeftSibling(parent, i);
-        } else if (rightSibling && rightSibling->n >= t) {
-            moveKeyAndChildFromRightSibling(parent, i);
+            move_key_and_child_from_left_sibling(parent, i);
+        } else if (right_sibling && right_sibling->n >= t) {
+            move_key_and_child_from_right_sibling(parent, i);
         } else {
             // Neither sibling has enough keys, merge with the right sibling unless we're at the last child
             if (i != parent->n) {
@@ -341,36 +341,36 @@ private:
      * \param parent The parent node containing the child and its left sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void moveKeyAndChildFromLeftSibling(Ref<Node<K, V, t>> parent, int i) {
+    void move_key_and_child_from_left_sibling(Ref<Node<K, V, t>> parent, int i) {
         Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> leftSibling = parent->children[i - 1];
+        Ref<Node<K, V, t>> left_sibling = parent->children[i - 1];
 
         // Shift keys right to make room for the key that we will take from parent
         for (int j = child->n - 1; j >= 0; --j) {
-            child->keyValues[j + 1] = child->keyValues[j];
+            child->key_values[j + 1] = child->key_values[j];
         }
 
         // Shift children right to make room for the child that we will take from sibling
-        if (!child->isLeaf) {
+        if (!child->is_leaf) {
             for (int j = child->n; j >= 0; --j) {
                 child->children[j + 1] = child->children[j];
             }
         }
 
         // Move the last child of the left sibling to child's first child
-        if (!child->isLeaf) {
-            child->children[0] = leftSibling->children[leftSibling->n];
+        if (!child->is_leaf) {
+            child->children[0] = left_sibling->children[left_sibling->n];
         }
 
         // Bring down the key from parent
-        child->keyValues[0] = parent->keyValues[i - 1];
+        child->key_values[0] = parent->key_values[i - 1];
 
         // Move up the key from the sibling to parent
-        parent->keyValues[i - 1] = leftSibling->keyValues[leftSibling->n - 1];
+        parent->key_values[i - 1] = left_sibling->key_values[left_sibling->n - 1];
 
         // Child gained a key and its left sibling lost one
         child->n += 1;
-        leftSibling->n -= 1;
+        left_sibling->n -= 1;
     }
 
     /**
@@ -382,35 +382,35 @@ private:
      * \param parent The parent node containing the child and its right sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void moveKeyAndChildFromRightSibling(Ref<Node<K, V, t>> parent, int i) {
+    void move_key_and_child_from_right_sibling(Ref<Node<K, V, t>> parent, int i) {
         Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> rightSibling = parent->children[i + 1];
+        Ref<Node<K, V, t>> right_sibling = parent->children[i + 1];
 
         // Bring down the key from parent
-        child->keyValues[child->n] = parent->keyValues[i];
+        child->key_values[child->n] = parent->key_values[i];
 
         // Move the first child of right sibling to child's last child
-        if (!child->isLeaf) {
-            child->children[child->n + 1] = rightSibling->children[0];
+        if (!child->is_leaf) {
+            child->children[child->n + 1] = right_sibling->children[0];
         }
 
         // Move up the first key from the right sibling to parent
-        parent->keyValues[i] = rightSibling->keyValues[0];
+        parent->key_values[i] = right_sibling->key_values[0];
 
         // Shift keys left to fill the gap in the right sibling
-        for (int j = 1; j < rightSibling->n; ++j) {
-            rightSibling->keyValues[j - 1] = rightSibling->keyValues[j];
+        for (int j = 1; j < right_sibling->n; ++j) {
+            right_sibling->key_values[j - 1] = right_sibling->key_values[j];
         }
 
         // Shift children left to fill the gap in the right sibling
-        if (!rightSibling->isLeaf) {
-            for (int j = 1; j <= rightSibling->n; ++j) {
-                rightSibling->children[j - 1] = rightSibling->children[j];
+        if (!right_sibling->is_leaf) {
+            for (int j = 1; j <= right_sibling->n; ++j) {
+                right_sibling->children[j - 1] = right_sibling->children[j];
             }
         }
 
         child->n += 1;
-        rightSibling->n -= 1;
+        right_sibling->n -= 1;
     }
 
     /**
@@ -424,26 +424,26 @@ private:
      */
     void merge(Ref<Node<K, V, t>> parent, int i) {
         Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> rightSibling = parent->children[i + 1];
+        Ref<Node<K, V, t>> right_sibling = parent->children[i + 1];
 
         // Bring down the key from parent
-        child->keyValues[t - 1] = parent->keyValues[i];
+        child->key_values[t - 1] = parent->key_values[i];
 
         // Copy the keys from sibling to child
-        for (int j = 0; j < rightSibling->n; ++j) {
-            child->keyValues[j + t] = rightSibling->keyValues[j];
+        for (int j = 0; j < right_sibling->n; ++j) {
+            child->key_values[j + t] = right_sibling->key_values[j];
         }
 
         // Copy the children from sibling to child
-        if (!child->isLeaf) {
-            for (int j = 0; j <= rightSibling->n; ++j) {
-                child->children[j + t] = rightSibling->children[j];
+        if (!child->is_leaf) {
+            for (int j = 0; j <= right_sibling->n; ++j) {
+                child->children[j + t] = right_sibling->children[j];
             }
         }
 
         // Fill the gap in parent that was created by moving down the key
         for (int j = i + 1; j < parent->n; ++j) {
-            parent->keyValues[j - 1] = parent->keyValues[j];
+            parent->key_values[j - 1] = parent->key_values[j];
         }
 
         // Fill the gap in parent that was created by moving down the child
@@ -452,10 +452,10 @@ private:
         }
 
         // Size is now child and sibling's size together + the key from parent
-        child->n += rightSibling->n + 1;
+        child->n += right_sibling->n + 1;
         --parent->n;
 
-        freeNode(rightSibling);
+        free_node(right_sibling);
     }
 
     /**
@@ -467,28 +467,28 @@ private:
      * \param parent The parent node containing the key to be removed.
      * \param i The index of the key in the parent node's keys array.
      */
-    void removeFromNonLeaf(Ref<Node<K, V, t>> parent, int i) {
-        KeyValue<K, V> keyValue = parent->keyValues[i];
-        Ref<Node<K, V, t>> leftChild = parent->children[i];
-        Ref<Node<K, V, t>> rightChild = parent->children[i + 1];
+    void remove_from_non_leaf(Ref<Node<K, V, t>> parent, int i) {
+        KeyValue<K, V> key_value = parent->key_values[i];
+        Ref<Node<K, V, t>> left_child = parent->children[i];
+        Ref<Node<K, V, t>> right_child = parent->children[i + 1];
 
-        if (leftChild->n >= t) {
+        if (left_child->n >= t) {
             // Left child has at least t keys so we replace the key with the largest key in
             // the left subtree and recursively remove the predecessor from the left child
-            KeyValue<K, V> predecessor = getInOrderPredecessor(parent, i);
-            parent->keyValues[i] = predecessor;
-            remove(leftChild, predecessor.key);
-        } else if (rightChild->n >= t) {
+            KeyValue<K, V> predecessor = get_in_order_predecessor(parent, i);
+            parent->key_values[i] = predecessor;
+            remove(left_child, predecessor.key);
+        } else if (right_child->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
-            KeyValue<K, V> successor = getInOrderSuccessor(parent, i);
-            parent->keyValues[i] = successor;
-            remove(rightChild, successor.key);
+            KeyValue<K, V> successor = get_in_order_successor(parent, i);
+            parent->key_values[i] = successor;
+            remove(right_child, successor.key);
         } else {
             // Both children have fewer than t keys so we need to merge the right child into
             // the left child before removing the key
             merge(parent, i);
-            remove(leftChild, keyValue.key);
+            remove(left_child, key_value.key);
         }
     }
 
@@ -498,12 +498,12 @@ private:
      *          the key to the left to overwrite the key at the specified index.
      *
      * \param node The leaf node from which the key is to be removed.
-     * \param i The index of the key to be removed in the node's `keyValues` array.
+     * \param i The index of the key to be removed in the node's `key_values` array.
      */
-    void removeFromLeaf(Ref<Node<K, V, t>> node, const int i) {
+    void remove_from_leaf(Ref<Node<K, V, t>> node, const int i) {
         // Overwrite key by shifting keys to the left
         for (int j = i + 1; j < node->n; ++j) {
-            node->keyValues[j - 1] = node->keyValues[j];
+            node->key_values[j - 1] = node->key_values[j];
         }
 
         --node->n; // Reduce the key count
@@ -522,35 +522,35 @@ private:
     void remove(Ref<Node<K, V, t>> node, K key) {
         // Find the first key greater than or equal to key
         int i = 0;
-        while (i < node->n && node->keyValues[i].key < key) {
+        while (i < node->n && node->key_values[i].key < key) {
             ++i;
         }
 
         Ref<Node<K, V, t>> child = node->children[i];
 
         // Key exists in the current node
-        if (i < node->n && node->keyValues[i].key == key) {
-            if (node->isLeaf) {
-                removeFromLeaf(node, i);
+        if (i < node->n && node->key_values[i].key == key) {
+            if (node->is_leaf) {
+                remove_from_leaf(node, i);
             } else {
-                removeFromNonLeaf(node, i);
+                remove_from_non_leaf(node, i);
             }
         } else { // Key not found in the current node, search in the child
-            if (node->isLeaf) { return; } // Key not found
+            if (node->is_leaf) { return; } // Key not found
 
             // Flag which later indicates if we need to process the last child
-            bool isLastChild = i == node->n;
+            bool is_last_child = i == node->n;
 
             // Rebalance nodes along the traversal if necessary, ensuring they have >= t keys
             if (child->n < t) {
-                rebalanceNode(node, i);
+                rebalance_node(node, i);
             }
 
             // If child was the last child and the number of keys in the node decreased
             // after re-balancing, search for the key in the previous child instead
-            if (isLastChild && i > node->n) {
-                Ref<Node<K, V, t>> prevChild = node->children[i - 1];
-                remove(prevChild, key);
+            if (is_last_child && i > node->n) {
+                Ref<Node<K, V, t>> prev_child = node->children[i - 1];
+                remove(prev_child, key);
             } else { // Search in the child
                 remove(child, key);
             }
@@ -564,15 +564,15 @@ private:
      *
      * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
      */
-    void deleteNode(Ref<Node<K, V, t>> node) {
+    void delete_node(Ref<Node<K, V, t>> node) {
         if (node == REF_NULL) return;
 
-        if (!node->isLeaf) {
+        if (!node->is_leaf) {
             for (int i = 0; i <= node->n; i++) {
-                deleteNode(node->children[i]);
+                delete_node(node->children[i]);
             }
         }
-        freeNode(node);
+        free_node(node);
     }
 
     /**
@@ -586,22 +586,22 @@ private:
     * \param callback The callback function to apply to each key-value pair during the traversal.
     */
     template <typename Func>
-    void traverseNode(Ref<Node<K, V, t>> node, Func& callback) {
+    void traverse_node(Ref<Node<K, V, t>> node, Func& callback) {
         if (node == REF_NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
-            if (!node->isLeaf) {
-                traverseNode(node->children[i], callback);
+            if (!node->is_leaf) {
+                traverse_node(node->children[i], callback);
             }
 
             std::visit([&](auto&& val) {
-                callback(node->keyValues[i].key, val);
-            }, node->keyValues[i].value);
+                callback(node->key_values[i].key, val);
+            }, node->key_values[i].value);
         }
 
-        if (!node->isLeaf) {
-            traverseNode(node->children[i], callback);
+        if (!node->is_leaf) {
+            traverse_node(node->children[i], callback);
         }
     }
 
@@ -613,19 +613,19 @@ private:
      * \param node The Ref to the node to start printing from.
      * \param path A string representing the path to the current node in the tree.
      */
-    void printNode(Ref<Node<K, V, t>> node, const std::string &path) {
+    void print_node(Ref<Node<K, V, t>> node, const std::string &path) {
         if (node == REF_NULL) { return; }
 
         int i;
         for (i = 0; i < node->n; i++) {
             std::visit([node, i](auto&& val) {
-                std::cout << node->keyValues[i].key << ": " << val << std::endl;
-            }, node->keyValues[i].value);
+                std::cout << node->key_values[i].key << ": " << val << std::endl;
+            }, node->key_values[i].value);
         }
 
         for (i = 0; i <= node->n; i++) {
-            if (!node->isLeaf) {
-                printNode(node->children[i], path + "->" + std::to_string(i));
+            if (!node->is_leaf) {
+                print_node(node->children[i], path + "->" + std::to_string(i));
             }
         }
     }
@@ -641,9 +641,9 @@ public:
      */
     explicit BTree(Allocator *alloc) : root(REF_NULL), _size(0) {
         allocator = alloc;
-        root = createNode(true);
+        root = create_node(true);
     }
-    // ~BTree() { deleteNode(root); }
+    // ~BTree() { delete_node(root); }
 
     /**
      * \brief Searches for a key in the B-Tree.
@@ -671,27 +671,27 @@ public:
     */
     BTree insert(K key, V value) {
         if (root == REF_NULL) {
-            root = createNode(true);
-            root->keyValues[0].key = key;
-            root->keyValues[0].value = value;
+            root = create_node(true);
+            root->key_values[0].key = key;
+            root->key_values[0].value = value;
             root->n = 1;
             return *this;
         }
 
         // Copy-on-write
         if (allocator->get_txn_id() != root->txn_id) {
-            root = copyNode(root);
+            root = copy_node(root);
         }
 
         // Check if the root is full and needs to be split
         if (root->n == 2*t - 1) {
-            Ref<Node<K, V, t>> s = createNode(false);
+            Ref<Node<K, V, t>> s = create_node(false);
             s->children[0] = root; // Make the old root a child of the new root
             root = s;
-            splitChild(s, 0); // Splits old root and moves its middle key up to the new root
-            insertNonFull(s, key, value);
+            split_child(s, 0); // Splits old root and moves its middle key up to the new root
+            insert_non_full(s, key, value);
         } else {
-            insertNonFull(root, key, value);
+            insert_non_full(root, key, value);
         }
 
         return *this;
@@ -713,8 +713,8 @@ public:
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
             Ref<Node<K, V, t>> tmp = root;
-            root = root->isLeaf ? REF_NULL : root->children[0];
-            freeNode(tmp);
+            root = root->is_leaf ? REF_NULL : root->children[0];
+            free_node(tmp);
         }
     }
 
@@ -749,7 +749,7 @@ public:
     template <typename Func>
     void traverse(Func callback) {
         if (root) {
-            traverseNode(root, callback);
+            traverse_node(root, callback);
         }
     }
 
@@ -759,7 +759,7 @@ public:
      */
     void print() {
         if (root) {
-            printNode(root, std::string("Root"));
+            print_node(root, std::string("Root"));
             std::cout << std::endl;
         }
     }

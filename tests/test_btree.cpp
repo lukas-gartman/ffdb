@@ -18,7 +18,7 @@ TEST(BTreeTest, InsertTest) {
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
     tree.insert(5,  3.0f);
-    auto newTree = tree.insert(6,  4.0f);
+    auto new_tree = tree.insert(6,  4.0f);
     EXPECT_TRUE(tree.search(10));
     EXPECT_TRUE(tree.search(20));
     EXPECT_TRUE(tree.search(5));
@@ -38,7 +38,7 @@ TEST(BTreeTest, InsertTest) {
     EXPECT_TRUE(tree.search(17));
     EXPECT_FALSE(tree.search(15));
 
-    EXPECT_TRUE(newTree.size() == 4);
+    EXPECT_TRUE(new_tree.size() == 4);
     EXPECT_TRUE(tree.size() == 8);
 
     tree.print();
@@ -52,24 +52,24 @@ TEST(BTreeTest, Transactions) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 1024);
 
-    constexpr int numTransactions = 1000;
-    BTree::BTree<int, float, 3> trees[numTransactions];
+    constexpr int num_transactions = 1000;
+    BTree::BTree<int, float, 3> trees[num_transactions];
 
     db.start_transaction();
     trees[0] = BTree::BTree<int, float, 3>(db.alloc);
     db.commit_transaction();
 
-    for (int i = 1; i < numTransactions; i++) {
+    for (int i = 1; i < num_transactions; i++) {
         db.start_transaction();
         trees[i] = trees[i-1].insert(i, .5f + i);
         db.commit_transaction();
     }
 
     db.start_transaction();
-    trees[numTransactions-1].insert(numTransactions, 1337.0f);
+    trees[num_transactions-1].insert(num_transactions, 1337.0f);
     db.commit_transaction();
 
-    for (int t = 0; t < numTransactions; t++) {
+    for (int t = 0; t < num_transactions; t++) {
         EXPECT_EQ(trees[t].size(), t + 1);
     }
 
@@ -82,12 +82,12 @@ TEST(BTreeTest, SequentialInsertTest) {
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
-    constexpr int numKeys = 500000;
-    for (int i = 1; i <= numKeys; ++i) {
+    constexpr int num_keys = 500000;
+    for (int i = 1; i <= num_keys; ++i) {
         tree.insert(i, i + 0.5f);
     }
 
-    for (int i = 1; i <= numKeys; ++i) {
+    for (int i = 1; i <= num_keys; ++i) {
         EXPECT_TRUE(tree.search(i));
     }
 
@@ -102,12 +102,12 @@ TEST(BTreeTest, RandomInsert) {
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
-    constexpr int numKeys = 50;
+    constexpr int num_keys = 50;
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
-    while (keys.size() < numKeys) {
-        int key = std::rand() % numKeys * 5 + 1;
+    while (keys.size() < num_keys) {
+        int key = std::rand() % num_keys * 5 + 1;
         if (keys.insert(key).second) {
             tree.insert(key, key + 0.5f);
         }
@@ -128,30 +128,30 @@ TEST(BTreeTest, DuplicateTest) {
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
-    constexpr int numKeys = 1'000'000;
+    constexpr int num_keys = 1'000'000;
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
-    while (keys.size() < numKeys) {
-        int key = std::rand() % numKeys * 5 + 1;
+    while (keys.size() < num_keys) {
+        int key = std::rand() % num_keys * 5 + 1;
         if (keys.insert(key).second) {
             tree.insert(key, key + 0.5f);
         }
     }
 
-    std::set<int> uniqueKeys;
-    bool hasDuplicate = false;
+    std::set<int> unique_keys;
+    bool has_duplicate = false;
 
-    tree.traverse([&uniqueKeys, &hasDuplicate](const int key, auto value) {
-        if (uniqueKeys.contains(key)) {
+    tree.traverse([&unique_keys, &has_duplicate](const int key, auto value) {
+        if (unique_keys.contains(key)) {
             std::cout << "Duplicate key found: " << key << ": " << value << std::endl;
-            hasDuplicate = true;
+            has_duplicate = true;
         } else {
-            uniqueKeys.insert(key);
+            unique_keys.insert(key);
         }
     });
 
-    EXPECT_FALSE(hasDuplicate);
+    EXPECT_FALSE(has_duplicate);
 
     db.commit_transaction();
 
@@ -223,12 +223,12 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
-    constexpr int numKeys = 1000000;
-    for (int i = numKeys; i >= numKeys; --i) {
+    constexpr int num_keys = 1000000;
+    for (int i = num_keys; i >= num_keys; --i) {
         tree.insert(i, i + 0.5f);
     }
 
-    for (int i = numKeys; i >= numKeys; --i) {
+    for (int i = num_keys; i >= num_keys; --i) {
         tree.remove(i);
         EXPECT_FALSE(tree.search(i)) << "Failed for key: " << i;
     }
@@ -238,13 +238,13 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
 // // NOTE: It seems that this could generate duplicate keys which could
 // // mess upp some of the tests
-// std::vector<int> generateRandomKeys(int numKeys) {
+// std::vector<int> generateRandomKeys(int num_keys) {
 //     std::srand(std::time(nullptr));
 //     std::vector<int> keys;
 //     std::unordered_set<int> keySet;
 //
-//     while (keySet.size() < numKeys) {
-//         int key = std::rand() % numKeys;
+//     while (keySet.size() < num_keys) {
+//         int key = std::rand() % num_keys;
 //         if (keySet.insert(key).second) {
 //             keys.push_back(key);
 //         }
@@ -259,9 +259,9 @@ TEST(BTreeTest, SequentialInsertRemove) {
 //
 //     BTree::BTree<int, float, 3> tree(db.alloc);
 //
-//     constexpr int numKeys = 1'000'000;
+//     constexpr int num_keys = 1'000'000;
 //     std::cout << "Generating random keys..." << std::endl;
-//     std::vector<int> keys = generateRandomKeys(numKeys);
+//     std::vector<int> keys = generateRandomKeys(num_keys);
 //     for (const int key : keys) {
 //         tree.insert(key);
 //         EXPECT_TRUE(tree.search(key)) << "Insert failed for key: " << key;
@@ -340,9 +340,9 @@ TEST(BTreeTest, RootNodeDelete) {
 //     BTree::BTree<int, float, 3> tree(db.alloc);
 //
 //     const int start = 44;
-//     const int numKeys = 50;
-//     std::vector<int> keys = generateRandomKeys(numKeys);
-//     for (int i = start; i < numKeys; ++i) {
+//     const int num_keys = 50;
+//     std::vector<int> keys = generateRandomKeys(num_keys);
+//     for (int i = start; i < num_keys; ++i) {
 //         std::cout << "\niteration " << i << std::endl;
 //         bool testFailed = false;
 //         int failedKey = -1;
