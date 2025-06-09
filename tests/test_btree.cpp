@@ -11,7 +11,7 @@
 
 TEST(BTreeTest, InsertTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -36,14 +36,14 @@ TEST(BTreeTest, InsertTest) {
 
     tree.print();
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -56,14 +56,14 @@ TEST(BTreeTest, SequentialInsertTest) {
         EXPECT_TRUE(tree.search(i));
     }
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RandomInsert) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -82,14 +82,14 @@ TEST(BTreeTest, RandomInsert) {
         EXPECT_TRUE(tree.search(key));
     }
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, DuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -118,14 +118,14 @@ TEST(BTreeTest, DuplicateTest) {
 
     EXPECT_FALSE(hasDuplicate);
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -137,14 +137,14 @@ TEST(BTreeTest, ManualDuplicateTest) {
     tree.remove(3);
     EXPECT_FALSE(tree.search(3));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RemoveTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -177,14 +177,14 @@ TEST(BTreeTest, RemoveTest) {
     EXPECT_TRUE(tree.search(30));
     EXPECT_TRUE(tree.search(17));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertRemove) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -256,7 +256,7 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
 TEST(BTreeTest, RootNodeDelete) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn();
 
     BTree::BTree<int, float, 3> tree(db.alloc);
 
@@ -293,7 +293,7 @@ TEST(BTreeTest, RootNodeDelete) {
     tree.print();
     EXPECT_FALSE(tree.search(21));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }

@@ -4,19 +4,23 @@
 #include "Typedefs.h"
 #include "MemState.h" // Block & BlockDescr
 
-// TODO: Solve circular dependency
-
 /**
- * \struct Transaction
+ * \struct WriterState
  * \brief Represents a transaction and its associated memory state.
  *
  * The Transaction struct encapsulates metadata about a transaction. It is used
  * to manage memory allocation and deallocation during the transaction's
  * lifecycle, allowing for commit or rollback operations.
  */
-struct Transaction {
+struct WriterState {
+    size_t min_txn_id;
+
     /** \brief A unique identifier for the transaction. */
-    std::size_t id;
+    size_t id;
+
+    size_t mmap_size;
+
+    Object old_top;
 
     /** \brief The offset to the top adress associated with the transaction. */
     Object top;
@@ -38,6 +42,11 @@ struct Transaction {
 
     /** \brief A reference to the block that was freed most recently. */
     Block lf_block;
+};
+
+enum TxnMode {
+    TXN_READ,
+    TXN_WRITE
 };
 
 #endif //TRANSACTION_H

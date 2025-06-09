@@ -25,7 +25,7 @@ else()
             src/Synch.h
             src/MemoryMapping.h
             src/MemoryMapping.cpp
-            src/Transaction.h
+            src/WriterState.h
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -42,5 +42,5 @@ add_executable(ffdb src/main.cpp
         src/Synch.h
         src/MemoryMapping.h
         src/MemoryMapping.cpp
-        src/Transaction.h
+        src/WriterState.h
 )

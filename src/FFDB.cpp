@@ -3,7 +3,7 @@
 
 FFDB::FFDB(std::string filepath, int flags, int mode, size_t init_size) {
     mmap = new MemoryMapping(std::move(filepath), flags, mode, init_size);
-    alloc = new Allocator(mmap);
+    alloc = new Allocator([this]() { mmap->resize_map(); });
 }
 
 Revision *FFDB::register_revision(Object root, size_t txn_id) {
@@ -14,14 +14,20 @@ void FFDB::unregister_revision(Revision *rev) {
     mmap->unregister_revision(rev);
 }
 
-void FFDB::start_transaction() {
-    alloc->start_transaction();
+void FFDB::start_txn() {
+    auto *ws = new WriterState();
+    mmap->init_wr_txn(ws);
+    alloc->activate(ws);
 }
 
-void FFDB::rollback_transaction() {
-    alloc->rollback_transaction();
+void FFDB::cancel_txn() {
+    auto *ws = alloc->deactivate();
+    mmap->cancel_wr_txn();
+    delete ws;
 }
 
-void FFDB::commit_transaction() {
-    alloc->commit_transaction();
+void FFDB::commit_txn() {
+    auto *ws = alloc->deactivate();
+    mmap->apply_wr_txn(ws);
+    delete ws;
 }

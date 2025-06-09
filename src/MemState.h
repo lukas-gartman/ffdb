@@ -57,10 +57,10 @@ struct Revision {
 };
 
 struct MemState {
-    std::size_t mmap_size;
+    size_t mmap_size;
 
-    std::size_t curr_txn_id;
-    std::size_t min_txn_id;
+    size_t curr_txn_id;
+    size_t min_txn_id;
 
     Mutex write_lock;
     Mutex rev_lock;

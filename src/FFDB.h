@@ -4,8 +4,6 @@
 #include "Allocator.h"
 #include "MemoryMapping.h"
 
-#include <cstddef>
-
 class FFDB {
 public:
     Allocator *alloc;
@@ -16,9 +14,9 @@ public:
     Revision *register_revision(Object root, size_t txn_id);
     void unregister_revision(Revision *rev);
 
-    void start_transaction();
-    void rollback_transaction();
-    void commit_transaction();
+    void start_txn();
+    void cancel_txn();
+    void commit_txn();
 };
 
 #endif //FFDB_H

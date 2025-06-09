@@ -33,7 +33,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
     std::cout << "Starting new transaction..." << std::endl;
-    db.start_transaction();
+    db.start_txn();
 
     for (int i = 0; i < NUM_OPERATIONS; ++i) {
         int op = op_dist(rng);
@@ -70,14 +70,14 @@ TEST(AllocatorTest, RandomOperationsTest) {
             }
         } else if (op == 2) { // Commit/Start new transaction
             std::cout << "Committing transaction..." << std::endl;
-            db.commit_transaction();
+            db.commit_txn();
             std::cout << "Starting new transaction..." << std::endl;
-            db.start_transaction();
+            db.start_txn();
 
             history.clear();
         } else if (op == 3) { // Rollback
             std::cout << "Rolling back transaction..." << std::endl;
-            db.rollback_transaction();
+            db.cancel_txn();
 
             while (!history.empty()) {
                 auto [t, indx] = history.back();
@@ -92,7 +92,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
             }
 
             std::cout << "Starting new transaction..." << std::endl;
-            db.start_transaction();
+            db.start_txn();
         }
 
         // Verify
@@ -106,7 +106,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
         }
     }
     std::cout << "Committing transaction..." << std::endl;
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -115,7 +115,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
 TEST(AllocatorTest, TestAllocFreeTop) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
-    db.start_transaction();
+    db.start_txn();
     auto a1 = db.alloc->malloc<uint64_t>();
     auto b1 = db.alloc->malloc<uint32_t>();
     auto c1 = db.alloc->malloc<uint16_t>();
@@ -156,7 +156,7 @@ TEST(AllocatorTest, TestAllocFreeTop) {
     EXPECT_EQ(*c2, 0xCCCC);
     EXPECT_EQ(*d2, 0xDDDDDDDD);
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -164,7 +164,7 @@ TEST(AllocatorTest, TestAllocFreeTop) {
 TEST(AllocatorTest, TestFreeMergeLFBlock) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
-    db.start_transaction();
+    db.start_txn();
     auto a = db.alloc->malloc<uint8_t>();
     auto b = db.alloc->malloc<uint8_t>();
     auto c = db.alloc->malloc<uint8_t>();
@@ -206,7 +206,7 @@ TEST(AllocatorTest, TestFreeMergeLFBlock) {
     EXPECT_EQ(*d, 0xAA);
     EXPECT_EQ(*abcd, 0xAABBCCDD);
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -214,7 +214,7 @@ TEST(AllocatorTest, TestFreeMergeLFBlock) {
 TEST(AllocatorTest, TestResize) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
-    db.start_transaction();
+    db.start_txn();
 
     EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
 
@@ -223,16 +223,16 @@ TEST(AllocatorTest, TestResize) {
     }
     EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
 
-    db.commit_transaction();
+    db.commit_txn();
 
     EXPECT_EQ(db.mmap->shared_state->top, 4096 - sizeof(uint64_t) + 1); // Alloc starts at 1
 
-    db.start_transaction();
+    db.start_txn();
 
     db.alloc->malloc<uint64_t>();
     EXPECT_GT(db.mmap->shared_state->mmap_size, 4096); // Size only increases if db file was resized.
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -241,14 +241,14 @@ TEST(AllocatorTest, TestResize) {
 TEST(AllocatorTest, TestRollbackTop) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
-    db.start_transaction();
+    db.start_txn();
     auto a = db.alloc->malloc<int>();
     auto b = db.alloc->malloc<int>();
     *a = 5;
     *b = 10;
-    db.rollback_transaction();
+    db.cancel_txn();
 
-    db.start_transaction();
+    db.start_txn();
     EXPECT_EQ(*a, 5);
     EXPECT_EQ(*b, 10);
     a = db.alloc->malloc<int>();
@@ -257,7 +257,7 @@ TEST(AllocatorTest, TestRollbackTop) {
     *b = 20;
     EXPECT_EQ(*a, 15);
     EXPECT_EQ(*b, 20);
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }

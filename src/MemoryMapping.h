@@ -2,7 +2,7 @@
 #define MEMORYMAPPING_H
 
 #include "MemState.h"
-#include "Transaction.h"
+#include "WriterState.h"
 
 class MemoryMapping {
 private:
@@ -35,9 +35,9 @@ public:
     Revision *register_revision(Object root, size_t txn_id);
     void unregister_revision(Revision *rev);
 
-    void init_txn(Transaction *txn);
-    void rollback_txn(Transaction *txn);
-    void commit_txn(Transaction *txn);
+    void init_wr_txn(WriterState *ws);
+    void cancel_wr_txn();
+    void apply_wr_txn(WriterState *ws);
 
     void resize_map();
 

@@ -149,8 +149,8 @@ void MemoryMapping::unregister_revision(Revision *rev) {
     shared_state->rev_lock.unlock();
 }
 
-void MemoryMapping::init_txn(Transaction *txn) {
-    if (txn == nullptr)
+void MemoryMapping::init_wr_txn(WriterState *ws) {
+    if (ws == nullptr)
         throw std::runtime_error("No transaction started!");
 
     shared_state->write_lock.lock();
@@ -160,54 +160,49 @@ void MemoryMapping::init_txn(Transaction *txn) {
 
     current_base = base;
 
-    txn->id = shared_state->curr_txn_id;
-    txn->top = shared_state->top;
-    txn->free_blocks = shared_state->free_blocks;
-    txn->unused_descrs = shared_state->free_descrs;
-    txn->pending_unused_descrs = 0;
-    txn->pending_unused_last = 0;
-    txn->lf_block.obj = 0;
-    txn->lf_block.size = 0;
-    txn->lf_block.txn_id = 0;
+    ws->min_txn_id = shared_state->min_txn_id;
+    ws->id = shared_state->curr_txn_id;
+    ws->mmap_size = shared_state->mmap_size;
+    ws->old_top = shared_state->top;
+    ws->top = shared_state->top;
+    ws->free_blocks = shared_state->free_blocks;
+    ws->unused_descrs = shared_state->free_descrs;
+    ws->pending_unused_descrs = 0;
+    ws->pending_unused_last = 0;
+    ws->lf_block.obj = 0;
+    ws->lf_block.size = 0;
+    ws->lf_block.txn_id = 0;
 }
 
-void MemoryMapping::rollback_txn(Transaction *txn) {
-    if (txn == nullptr)
-        throw std::runtime_error("No transaction started!");
-
-    // shared_state->writer_pid = 0;
-
-    if (mprotect(base, size, PROT_READ) == -1)
-        throw std::runtime_error("Errno: " + std::to_string(errno));
-
+void MemoryMapping::cancel_wr_txn() {
     shared_state->write_lock.unlock();
 }
 
-void MemoryMapping::commit_txn(Transaction *txn) {
-    if (txn == nullptr)
+void MemoryMapping::apply_wr_txn(WriterState *ws) {
+    if (ws == nullptr)
         throw std::runtime_error("No transaction started!");
 
     auto saved_top = shared_state->top;
     auto saved_free_list = shared_state->free_blocks;
     auto saved_free_descriptors = shared_state->free_descrs;
 
-    if (txn->pending_unused_last != 0) {
-        txn->pending_unused_last->next_unused = txn->unused_descrs;
-        txn->unused_descrs = txn->pending_unused_descrs;
+    if (ws->pending_unused_last != 0) {
+        ws->pending_unused_last->next_unused = ws->unused_descrs;
+        ws->unused_descrs = ws->pending_unused_descrs;
     }
 
-    if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0)
+    if (msync(base, size, MS_SYNC | MS_INVALIDATE) != 0)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
-    shared_state->top = txn->top;
-    shared_state->free_blocks = txn->free_blocks;
-    shared_state->free_descrs = txn->unused_descrs;
+    shared_state->top = ws->top;
+    shared_state->free_blocks = ws->free_blocks;
+    shared_state->free_descrs = ws->unused_descrs;
     shared_state->curr_txn_id++;
 
     if (mprotect(base, size, PROT_READ) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
-    if (msync((void *) base, size, MS_SYNC | MS_INVALIDATE) != 0) {
+    if (msync(base, size, MS_SYNC | MS_INVALIDATE) != 0) {
         shared_state->top = saved_top;
         shared_state->free_blocks = saved_free_list;
         shared_state->free_descrs = saved_free_descriptors;
@@ -218,8 +213,9 @@ void MemoryMapping::commit_txn(Transaction *txn) {
     // state->writer_pid = 0;
 
     shared_state->write_lock.unlock();
-
 }
+
+// TODO need a function that releases writer lock in case of rollback
 
 void MemoryMapping::cleanup() noexcept {
     if (fd >= 0) {
@@ -278,7 +274,7 @@ void MemoryMapping::resize_map() {
 
     size = new_size;
     base = new_base;
-    current_base = (unsigned char *) new_base;
+    current_base = new_base;
 
     shared_state->resize_rw_lock.unlock();
 }
