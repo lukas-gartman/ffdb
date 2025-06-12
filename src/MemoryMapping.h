@@ -4,6 +4,11 @@
 #include "MemState.h"
 #include "WriterState.h"
 
+enum DBMode {
+    DB_READ,
+    DB_WRITE
+};
+
 class MemoryMapping {
 private:
     int fd;
@@ -35,8 +40,9 @@ public:
     Revision *register_revision(Object root, size_t txn_id);
     void unregister_revision(Revision *rev);
 
+    void lock(DBMode mode);
+    void unlock(DBMode mode);
     void init_wr_txn(WriterState *ws);
-    void cancel_wr_txn();
     void apply_wr_txn(WriterState *ws);
 
     void resize_map();

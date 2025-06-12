@@ -149,11 +149,23 @@ void MemoryMapping::unregister_revision(Revision *rev) {
     shared_state->rev_lock.unlock();
 }
 
+void MemoryMapping::lock(DBMode mode) {
+    if (size != shared_state->mmap_size) resize_map();
+
+    if (mode == DB_WRITE) shared_state->write_lock.lock();
+    else if (mode == DB_READ) shared_state->resize_rw_lock.read_lock();
+    else throw std::invalid_argument("Invalid DBMode");
+}
+
+void MemoryMapping::unlock(DBMode mode) {
+    if (mode == DB_WRITE) shared_state->write_lock.unlock();
+    else if (mode == DB_READ) shared_state->resize_rw_lock.unlock();
+    else throw std::invalid_argument("Invalid DBMode");
+}
+
 void MemoryMapping::init_wr_txn(WriterState *ws) {
     if (ws == nullptr)
         throw std::runtime_error("No transaction started!");
-
-    shared_state->write_lock.lock();
 
     if (mprotect(base, size, PROT_READ | PROT_WRITE) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
@@ -172,10 +184,6 @@ void MemoryMapping::init_wr_txn(WriterState *ws) {
     ws->lf_block.obj = 0;
     ws->lf_block.size = 0;
     ws->lf_block.txn_id = 0;
-}
-
-void MemoryMapping::cancel_wr_txn() {
-    shared_state->write_lock.unlock();
 }
 
 void MemoryMapping::apply_wr_txn(WriterState *ws) {

@@ -15,6 +15,7 @@ void FFDB::unregister_revision(Revision *rev) {
 }
 
 void FFDB::start_txn() {
+    mmap->lock(DB_WRITE);
     auto *ws = new WriterState();
     mmap->init_wr_txn(ws);
     alloc->activate(ws);
@@ -22,12 +23,13 @@ void FFDB::start_txn() {
 
 void FFDB::cancel_txn() {
     auto *ws = alloc->deactivate();
-    mmap->cancel_wr_txn();
     delete ws;
+    mmap->unlock(DB_WRITE);
 }
 
 void FFDB::commit_txn() {
     auto *ws = alloc->deactivate();
     mmap->apply_wr_txn(ws);
     delete ws;
+    mmap->unlock(DB_WRITE);
 }
