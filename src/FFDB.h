@@ -14,9 +14,9 @@ public:
     Revision *register_revision(Object root, size_t txn_id);
     void unregister_revision(Revision *rev);
 
-    void start_txn();
-    void cancel_txn();
-    void commit_txn();
+    void start_txn(DBMode mode);
+    void cancel_txn(DBMode mode);
+    void commit_txn(DBMode mode);
 };
 
 #endif //FFDB_H

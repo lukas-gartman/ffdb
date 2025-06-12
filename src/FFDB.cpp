@@ -14,22 +14,31 @@ void FFDB::unregister_revision(Revision *rev) {
     mmap->unregister_revision(rev);
 }
 
-void FFDB::start_txn() {
-    mmap->lock(DB_WRITE);
-    auto *ws = new WriterState();
-    mmap->init_wr_txn(ws);
-    alloc->activate(ws);
+void FFDB::start_txn(DBMode mode) {
+    mmap->lock(mode);
+
+    if (mode == DB_WRITE) {
+        auto *ws = new WriterState();
+        mmap->init_wr_txn(ws);
+        alloc->activate(ws);
+    }
 }
 
-void FFDB::cancel_txn() {
-    auto *ws = alloc->deactivate();
-    delete ws;
-    mmap->unlock(DB_WRITE);
+void FFDB::cancel_txn(DBMode mode) {
+    if (mode == DB_WRITE) {
+        auto *ws = alloc->deactivate();
+        delete ws;
+    }
+
+    mmap->unlock(mode);
 }
 
-void FFDB::commit_txn() {
-    auto *ws = alloc->deactivate();
-    mmap->apply_wr_txn(ws);
-    delete ws;
-    mmap->unlock(DB_WRITE);
+void FFDB::commit_txn(DBMode mode) {
+    if (mode == DB_WRITE) {
+        auto *ws = alloc->deactivate();
+        mmap->apply_wr_txn(ws);
+        delete ws;
+    }
+
+    mmap->unlock(mode);
 }
