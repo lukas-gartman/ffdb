@@ -22,10 +22,6 @@ private:
     void cleanup() noexcept;
 
 public:
-    constexpr static size_t PAGE_SIZE = 4096;
-    constexpr static size_t MIN_PAGE_SIZE = PAGE_SIZE * 2;
-
-    // TODO: Make read only outside of class.
     MemState *shared_state;
 
     MemoryMapping(

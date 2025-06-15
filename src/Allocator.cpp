@@ -29,6 +29,7 @@ Object Allocator::malloc_internal(size_t bytes) {
     obj = delete_block_descr(bytes);
     if (obj != 0) return obj;
 
+    //obj = malloc_top(bytes);
     // The above failed. Get memory from the top.
     size_t free_size = curr_ws->mmap_size - curr_ws->top;
     if (bytes > free_size)
@@ -93,11 +94,46 @@ void Allocator::free_internal(Object obj, size_t bytes) {
     // couldn't be merged with the transaction local top. This signifies
     // that the block can be immediately reused if it would be inserted
     // into the blockdescriptor list.
-    // TODO: If it can be immediately reused, why even insert it into the
-    // TODO: block descriptor tree. Finish the database assuming this is
-    // TODO: needed, create tests, change this and see if the tests still
-    // TODO: pass. THis code is confusing.
     curr_ws->lf_block.txn_id = txn_id;
+}
+
+Object Allocator::malloc_top(size_t bytes) {
+    const size_t free_size = curr_ws->mmap_size - curr_ws->top;
+    if (bytes > free_size) {
+        size_t old_size = curr_ws->mmap_size;
+        curr_ws->mmap_size = resize_callback();
+        std::cout << "Resizing memory map from "
+                  << old_size << " to " << curr_ws->mmap_size << std::endl;
+    }
+
+    Object offset;
+
+    // TODO: Does not need to be size_t
+    const size_t free_size_page = bytes_left_in_page(curr_ws->top);
+    if (bytes > free_size_page) {
+        std::cout << free_size_page << " bytes left, allocate " << bytes << " bytes." << std::endl;
+
+        Object old_top = curr_ws->top;
+        curr_ws->top += free_size_page;
+        std::cout << "Align from " << old_top << " to " << curr_ws->top << std::endl;
+
+        offset = curr_ws->top;
+        curr_ws->top += bytes;
+
+        std::cout << "Insert lf_block (" << curr_ws->lf_block.obj << ", " << curr_ws->lf_block.size << ", " << curr_ws->lf_block.txn_id << ")" << std::endl;
+        insert_block_descr(curr_ws->lf_block);
+        curr_ws->lf_block.obj = old_top;
+        curr_ws->lf_block.size = free_size_page;
+        // TODO: Think about if 0 is correct here
+        curr_ws->lf_block.txn_id = 0;
+
+        return offset;
+    }
+
+    offset = curr_ws->top;
+    curr_ws->top += bytes;
+
+    return offset;
 }
 
 void Allocator::activate(WriterState *ws) {
@@ -131,6 +167,8 @@ Ref<BlockDescr> Allocator::new_block_descr(Block block) {
                 curr_ws->unused_descrs->next_unused;
     }
     else {
+        //descr = malloc_top(sizeof(BlockDescr));
+
         // Allocate a new block descriptor
         const size_t free_size = curr_ws->mmap_size - curr_ws->top;
 
@@ -139,6 +177,7 @@ Ref<BlockDescr> Allocator::new_block_descr(Block block) {
 
         descr = curr_ws->top;
         curr_ws->top += sizeof(BlockDescr);
+
     }
 
     descr->block = block;
@@ -218,8 +257,14 @@ Object Allocator::delete_block_descr(size_t block_size) {
 
     Ref<BlockDescr> curr_descr = curr_ws->free_blocks;
 
+    int bd_count = 0;
+
     // Find the best fitting block.
     while (curr_descr != 0) {
+        if (bd_count > 100) {
+            std::cout << "nut" << std::endl;
+        }
+
         bool found =
             curr_descr->block.size >= block_size &&
             curr_descr->block.txn_id < curr_ws->min_txn_id;
@@ -227,6 +272,8 @@ Object Allocator::delete_block_descr(size_t block_size) {
         if (found) break;
 
         curr_descr = curr_descr->next_free;
+        bd_count++;
+        std::cout << "Delete BD next: " << curr_descr << std::endl;
     }
 
     Ref<BlockDescr> best_fit = curr_descr;
@@ -293,6 +340,18 @@ Object Allocator::delete_block_descr(size_t block_size) {
 
     return offset;
 }
+
+bool Allocator::fits_within_page(Object offset, size_t size) const {
+    constexpr int n = std::countr_zero(LOGICAL_PAGE_SIZE); // 2^n = PAGE_SIZE
+
+    return offset >> n == (offset + size) >> n;
+}
+
+size_t Allocator::bytes_left_in_page(const Object offset) const {
+    // PAGE_SIZE - (offset % PAGE_SIZE) but fast
+    return LOGICAL_PAGE_SIZE - (offset & (LOGICAL_PAGE_SIZE - 1));
+}
+
 
 void Allocator::dump_block_descrs() {
     if (!is_active())

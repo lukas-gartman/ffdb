@@ -3,7 +3,11 @@
 
 FFDB::FFDB(std::string filepath, int flags, int mode, size_t init_size) {
     mmap = new MemoryMapping(std::move(filepath), flags, mode, init_size);
-    alloc = new Allocator([this]() { mmap->resize_map(); });
+    alloc = new Allocator(
+        [this]() {
+            mmap->resize_map();
+            return mmap->get_size();
+        });
 }
 
 Revision *FFDB::register_revision(Object root, size_t txn_id) {

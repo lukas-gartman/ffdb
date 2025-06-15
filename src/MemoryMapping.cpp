@@ -47,13 +47,13 @@ shared_state(nullptr) {
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    if (mprotect(shared_state, PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
+    if (mprotect(shared_state, SYSTEM_PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    size -= PAGE_SIZE;
-    base = ((unsigned char *) shared_state) + PAGE_SIZE;
+    size -= SYSTEM_PAGE_SIZE;
+    base = ((unsigned char *) shared_state) + SYSTEM_PAGE_SIZE;
 
     if (is_new) {
         shared_state->mmap_size = size;
@@ -105,7 +105,7 @@ Revision *MemoryMapping::register_revision(Object root, size_t txn_id) {
 
     if (!found) {
         if (found_rev == nullptr) {
-            size_t max_revisions = (PAGE_SIZE - sizeof(MemState)) / sizeof(Revision);
+            size_t max_revisions = (LOGICAL_PAGE_SIZE - sizeof(MemState)) / sizeof(Revision);
             if (shared_state->revision_count >= max_revisions) {
                 shared_state->rev_lock.unlock();
                 throw std::runtime_error("No more revisions available");
@@ -166,7 +166,8 @@ void MemoryMapping::unlock(DBMode mode) {
 void MemoryMapping::init_wr_txn(WriterState *ws) {
     if (ws == nullptr)
         throw std::runtime_error("No transaction started!");
-
+    if (base == nullptr) std::cout << "Base is null!" << std::endl;
+    std::cout << base << ", " << size << std::endl;
     if (mprotect(base, size, PROT_READ | PROT_WRITE) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
@@ -223,8 +224,6 @@ void MemoryMapping::apply_wr_txn(WriterState *ws) {
     shared_state->write_lock.unlock();
 }
 
-// TODO need a function that releases writer lock in case of rollback
-
 void MemoryMapping::cleanup() noexcept {
     if (fd >= 0) {
         close(fd);
@@ -239,7 +238,7 @@ void MemoryMapping::cleanup() noexcept {
 
 size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
     size_t new_size =
-            ((init_size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+            ((init_size + LOGICAL_PAGE_SIZE - 1) / LOGICAL_PAGE_SIZE) * LOGICAL_PAGE_SIZE;
 
     if (new_size < MIN_PAGE_SIZE)
         new_size = MIN_PAGE_SIZE;
@@ -257,7 +256,7 @@ void MemoryMapping::resize_map() {
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {
-        if (ftruncate(fd, PAGE_SIZE + new_size) == -1) {
+        if (ftruncate(fd, SYSTEM_PAGE_SIZE + new_size) == -1) {
             shared_state->resize_rw_lock.unlock();
             throw std::runtime_error("Errno: " + std::to_string(errno));
         }

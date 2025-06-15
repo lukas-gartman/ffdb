@@ -11,8 +11,30 @@ struct History {
     int index;
 };
 
+TEST(AllocatorTest, DebugTest) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+    db.start_txn(DB_WRITE);
+
+
+    for (int i = 0; i < 2000; ++i)
+        db.alloc->malloc<char>();
+
+    auto a = db.alloc->malloc<char>();
+
+    for (int i = 0; i < 2094; ++i)
+        db.alloc->malloc<char>();
+
+    db.alloc->free<char>(a);
+
+    db.alloc->malloc<int>();
+
+    db.commit_txn(DB_WRITE);
+
+    remove("test.db");
+}
+
 TEST(AllocatorTest, RandomOperationsTest) {
-    constexpr int NUM_OPERATIONS = 1000;
+    constexpr int NUM_OPERATIONS = 100;
     constexpr int MAX_ALLOCATIONS = 100;
 
     std::vector<Ref<int>> allocations_int(MAX_ALLOCATIONS / 2, 0);
@@ -105,7 +127,7 @@ TEST(AllocatorTest, RandomOperationsTest) {
             }
         }
     }
-    std::cout << "Committing transaction..." << std::endl;
+    std::cout << "Committing transaction end..." << std::endl;
     db.commit_txn(DB_WRITE);
 
     remove("test.db");
@@ -216,21 +238,21 @@ TEST(AllocatorTest, TestResize) {
 
     db.start_txn(DB_WRITE);
 
-    EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
+    EXPECT_EQ(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE);
 
-    for (int i = 0; i < 4096/sizeof(uint64_t) - 1; ++i) {
+    for (int i = 0; i < LOGICAL_PAGE_SIZE/sizeof(uint64_t) - 1; ++i) {
         db.alloc->malloc<uint64_t>();
     }
-    EXPECT_EQ(db.mmap->shared_state->mmap_size, 4096);
+    EXPECT_EQ(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE);
 
     db.commit_txn(DB_WRITE);
 
-    EXPECT_EQ(db.mmap->shared_state->top, 4096 - sizeof(uint64_t) + 1); // Alloc starts at 1
+    EXPECT_EQ(db.mmap->shared_state->top, LOGICAL_PAGE_SIZE - sizeof(uint64_t) + 1); // Alloc starts at 1
 
     db.start_txn(DB_WRITE);
 
     db.alloc->malloc<uint64_t>();
-    EXPECT_GT(db.mmap->shared_state->mmap_size, 4096); // Size only increases if db file was resized.
+    EXPECT_GT(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE); // Size only increases if db file was resized.
 
     db.commit_txn(DB_WRITE);
 

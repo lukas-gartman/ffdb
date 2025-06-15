@@ -1,9 +1,15 @@
 #ifndef TYPEDEFS_H
 #define TYPEDEFS_H
 #include <cstdint>
+#include <cstddef>
+#include <unistd.h>
 
 extern __thread unsigned char *current_base __attribute__((tls_model(
     "initial-exec")));
+
+const size_t SYSTEM_PAGE_SIZE = sysconf(_SC_PAGESIZE);
+const size_t LOGICAL_PAGE_SIZE = 2048; // Undefined behaviour if not a power of two
+const size_t MIN_PAGE_SIZE = SYSTEM_PAGE_SIZE * 2;
 
 typedef uintptr_t Object;
 
