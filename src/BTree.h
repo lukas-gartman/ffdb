@@ -769,6 +769,37 @@ public:
     }
 
     /**
+     * \brief Updates the value associated with a given key in the B-Tree.
+     * \details Searches for the specified key in the B-Tree. If the key exists,
+     *          updates its value to the new value provided.
+     *
+     * \param key The key whose value is to be updated.
+     * \param new_value The new value to associate with the key.
+     * \return True if the key was found and updated; false if the key does not exist in the B-Tree.
+     */
+    bool update(K key, V new_value) {
+        Ref<Node<K, V, t>> node = search(key);
+        if (node == REF_NULL) {
+            return false;
+        }
+
+        // Find the key in the node
+        int i = 0;
+        while (i < node->n && node->key_values[i].key != key) {
+            ++i;
+        }
+
+        // Copy-on-write
+        if (allocator->get_txn_id() != node->txn_id) {
+            node = copy_node(node);
+        }
+
+        // Update the value
+        node->key_values[i].value = new_value;
+        return true;
+    }
+
+    /**
      * \brief Gets the number of nodes in the B-Tree.
      * \details This function returns the current counter keeping track of the number of keys in the B-Tree.
      * \return The number of keys in the B-Tree.
