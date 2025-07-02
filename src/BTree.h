@@ -205,7 +205,6 @@ private:
     Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
         Ref<Node<K, V, t>> x = allocator->malloc<Node<K, V, t>>();
         *x = *node;
-        allocator->free(node);
         x->txn_id = allocator->get_txn_id();
         return x;
     }
@@ -221,13 +220,13 @@ private:
      * \param key The key to be inserted.
      * \param value The value associated with the key.
      */
-    void insert_non_full(Ref<Node<K, V, t>> x, K key, V value) {
+    bool insert_non_full(Ref<Node<K, V, t>> x, K key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->is_leaf) {
             // Check if the key already exists
             for (int j = 0; j < x->n; ++j) {
-                if (x->key_values[j].key == key) { return; } // Key already exists, do not insert
+                if (x->key_values[j].key == key) { return false; } // Key already exists, do not insert
             }
 
             // Shift keys to the right to make room for the new key
@@ -241,6 +240,8 @@ private:
             x->key_values[i+1].value = value;
             x->n = x->n + 1;
             ++_size;
+
+            return true;
         } else {
             // Find the child to insert the new key
             while (i >= 0 && key < x->key_values[i].key) {
@@ -264,7 +265,7 @@ private:
             }
 
             // Insert the new key into the appropriate child
-            insert_non_full(x->children[i], key, value);
+            return insert_non_full(x->children[i], key, value);
         }
     }
 
@@ -468,8 +469,16 @@ private:
      * \param parent The parent node containing the key to be removed.
      * \param i The index of the key in the parent node's keys array.
      */
-    void remove_from_non_leaf(Ref<Node<K, V, t>> parent, int i) {
+    bool remove_from_non_leaf(Ref<Node<K, V, t>> parent, int i) {
         KeyValue<K, V> key_value = parent->key_values[i];
+
+        // Copy-on-write for both children
+        if (allocator->get_txn_id() != parent->children[i]->txn_id) {
+            parent->children[i] = copy_node(parent->children[i]);
+        }
+        if (allocator->get_txn_id() != parent->children[i + 1]->txn_id) {
+            parent->children[i + 1] = copy_node(parent->children[i + 1]);
+        }
         Ref<Node<K, V, t>> left_child = parent->children[i];
         Ref<Node<K, V, t>> right_child = parent->children[i + 1];
 
@@ -478,18 +487,18 @@ private:
             // the left subtree and recursively remove the predecessor from the left child
             KeyValue<K, V> predecessor = get_in_order_predecessor(parent, i);
             parent->key_values[i] = predecessor;
-            remove(left_child, predecessor.key);
+            return remove(left_child, predecessor.key);
         } else if (right_child->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
             KeyValue<K, V> successor = get_in_order_successor(parent, i);
             parent->key_values[i] = successor;
-            remove(right_child, successor.key);
+            return remove(right_child, successor.key);
         } else {
             // Both children have fewer than t keys so we need to merge the right child into
             // the left child before removing the key
             merge(parent, i);
-            remove(left_child, key_value.key);
+            return remove(left_child, key_value.key);
         }
     }
 
@@ -501,7 +510,7 @@ private:
      * \param node The leaf node from which the key is to be removed.
      * \param i The index of the key to be removed in the node's `key_values` array.
      */
-    void remove_from_leaf(Ref<Node<K, V, t>> node, const int i) {
+    bool remove_from_leaf(Ref<Node<K, V, t>> node, const int i) {
         // Overwrite key by shifting keys to the left
         for (int j = i + 1; j < node->n; ++j) {
             node->key_values[j - 1] = node->key_values[j];
@@ -509,6 +518,7 @@ private:
 
         --node->n; // Reduce the key count
         --_size; // Reduce the size of the B-Tree
+        return true;
     }
 
     /**
@@ -520,24 +530,31 @@ private:
      * \param node The node from which the key is to be removed.
      * \param key The key to be removed from the B-Tree.
      */
-    void remove(Ref<Node<K, V, t>> node, K key) {
+    bool remove(Ref<Node<K, V, t>> node, K key) {
         // Find the first key greater than or equal to key
         int i = 0;
         while (i < node->n && node->key_values[i].key < key) {
             ++i;
         }
 
-        Ref<Node<K, V, t>> child = node->children[i];
+        // Ref<Node<K, V, t>> child = node->children[i];
+        Ref<Node<K, V, t>> child;
 
         // Key exists in the current node
         if (i < node->n && node->key_values[i].key == key) {
             if (node->is_leaf) {
-                remove_from_leaf(node, i);
+                return remove_from_leaf(node, i);
             } else {
-                remove_from_non_leaf(node, i);
+                return remove_from_non_leaf(node, i);
             }
         } else { // Key not found in the current node, search in the child
-            if (node->is_leaf) { return; } // Key not found
+            if (node->is_leaf) { return false; } // Key not found
+
+            // Copy-on-write for the child node
+            if (allocator->get_txn_id() != node->children[i]->txn_id) {
+                node->children[i] = copy_node(node->children[i]);
+            }
+            child = node->children[i];
 
             // Flag which later indicates if we need to process the last child
             bool is_last_child = i == node->n;
@@ -551,9 +568,9 @@ private:
             // after re-balancing, search for the key in the previous child instead
             if (is_last_child && i > node->n) {
                 Ref<Node<K, V, t>> prev_child = node->children[i - 1];
-                remove(prev_child, key);
+                return remove(prev_child, key);
             } else { // Search in the child
-                remove(child, key);
+                return remove(child, key);
             }
         }
     }
@@ -679,20 +696,31 @@ public:
             return *this;
         }
 
-        // Copy-on-write
-        if (allocator->get_txn_id() != root->txn_id) {
-            root = copy_node(root);
-        }
-
         // Check if the root is full and needs to be split
         if (root->n == 2*t - 1) {
             Ref<Node<K, V, t>> s = create_node(false);
             s->children[0] = root; // Make the old root a child of the new root
             root = s;
             split_child(s, 0); // Splits old root and moves its middle key up to the new root
-            insert_non_full(s, key, value);
+            bool inserted = insert_non_full(s, key, value);
+            if (!inserted) {
+                Ref<Node<K, V, t>> old_root = s->children[0];
+                free_node(s);
+                root = old_root;
+            }
         } else {
-            insert_non_full(root, key, value);
+            Ref<Node<K, V, t>> old_root = root;
+
+            // Copy-on-write
+            if (allocator->get_txn_id() != root->txn_id) {
+                root = copy_node(root);
+            }
+
+            bool inserted = insert_non_full(root, key, value);
+            if (!inserted && root->txn_id == allocator->get_txn_id()) {
+                free_node(root);
+                root = copy_node(old_root);
+            }
         }
 
         return *this;
@@ -706,17 +734,38 @@ public:
      *
      * \param key The key to be removed from the B-Tree.
      */
-    void remove(K key) {
-        if (!root) { return; }
+    bool remove(K key) {
+        if (!root) { return false; }
 
-        remove(root, key);
+        Ref<Node<K, V, t>> old_root = root;
+
+        // Copy-on-write
+        if (allocator->get_txn_id() != root->txn_id) {
+            root = copy_node(root);
+        }
+
+        bool removed = remove(root, key);
 
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
             Ref<Node<K, V, t>> tmp = root;
             root = root->is_leaf ? REF_NULL : root->children[0];
+
+            // If root changed to a child, we need to ensure copy-on-write for it too
+            if (root != REF_NULL && allocator->get_txn_id() != root->txn_id) {
+                root = copy_node(root);
+            }
+
             free_node(tmp);
         }
+
+        // If no actual removal happened and we copied the root, restore the old root
+        if (!removed && root->txn_id == allocator->get_txn_id()) {
+            free_node(root);
+            root = old_root;
+        }
+
+        return removed;
     }
 
     /**
