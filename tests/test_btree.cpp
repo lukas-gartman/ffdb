@@ -18,6 +18,8 @@ TEST(BTreeTest, InsertTest) {
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
     tree.insert(5,  3.0f);
+    tree.insert(5,  300.0f);
+    tree.insert(5,  300000.0f);
     auto new_tree = tree.insert(6,  4.0f);
     EXPECT_TRUE(tree.search(10));
     EXPECT_TRUE(tree.search(20));
@@ -77,6 +79,8 @@ TEST(BTreeTest, Transactions) {
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
+    remove("test.db");
+
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
     db.start_transaction();
 
@@ -213,6 +217,66 @@ TEST(BTreeTest, RemoveTest) {
     EXPECT_TRUE(tree.search(17));
 
     db.commit_transaction();
+
+    remove("test.db");
+}
+
+TEST(BTreeTest, RemoveTestCoW) {
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
+    // First transaction: create initial tree with 3 elements
+    db.start_transaction();
+    BTree::BTree<int, float, 3> tree(db.alloc);
+    tree.insert(10, 1.0f);
+    tree.insert(20, 2.0f);
+    tree.insert(5,  3.0f);
+    auto tree_copy1 = tree;  // Save reference to this version
+    db.commit_transaction();
+
+    // Second transaction: add 3 more elements
+    db.start_transaction();
+    tree.insert(6,  4.0f);
+    tree.insert(12, 5.0f);
+    tree.insert(30, 6.0f);
+    auto tree_copy2 = tree;  // Save reference to this version
+    db.commit_transaction();
+
+    // Third transaction: add 2 more and remove 3
+    db.start_transaction();
+    tree.insert(7,  7.0f);
+    tree.insert(17, 8.0f);
+    tree.remove(6);
+    tree.remove(7);
+    tree.remove(12);
+    db.commit_transaction();
+
+    // Verify each version retained its correct state
+    // tree_copy1 should have the state from first transaction
+    EXPECT_TRUE(tree_copy1.search(10));
+    EXPECT_TRUE(tree_copy1.search(20));
+    EXPECT_TRUE(tree_copy1.search(5));
+    EXPECT_FALSE(tree_copy1.search(6));
+    EXPECT_EQ(tree_copy1.size(), 3);
+
+    // tree_copy2 should have the state from second transaction
+    EXPECT_TRUE(tree_copy2.search(10));
+    EXPECT_TRUE(tree_copy2.search(6));
+    EXPECT_TRUE(tree_copy2.search(12));
+    EXPECT_TRUE(tree_copy2.search(30));
+    EXPECT_FALSE(tree_copy2.search(7));
+    EXPECT_EQ(tree_copy2.size(), 6);
+
+    // Final tree should have the state after all transactions
+    EXPECT_TRUE(tree.search(10));
+    EXPECT_TRUE(tree.search(20));
+    EXPECT_TRUE(tree.search(5));
+    EXPECT_FALSE(tree.search(6));
+    EXPECT_FALSE(tree.search(7));
+    EXPECT_FALSE(tree.search(12));
+    EXPECT_TRUE(tree.search(30));
+    EXPECT_TRUE(tree.search(17));
+    EXPECT_EQ(tree.size(), 5);
 
     remove("test.db");
 }
