@@ -43,4 +43,5 @@ add_executable(ffdb src/main.cpp
         src/MemoryMapping.h
         src/MemoryMapping.cpp
         src/Transaction.h
+        src/BinaryTree.h
 )
