@@ -26,6 +26,7 @@ else()
             src/MemoryMapping.h
             src/MemoryMapping.cpp
             src/Transaction.h
+            tests/test_binary_tree.cpp
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
