@@ -15,6 +15,8 @@ public:
 
     void start_transaction();
     void commit_transaction();
+
+    void hello_ffdb();
 };
 
 #endif //FFDB_H

@@ -13,3 +13,7 @@ void FFDB::start_transaction() {
 void FFDB::commit_transaction() {
     alloc->commit_transaction();
 }
+
+void FFDB::hello_ffdb() {
+    std::cout << "hello ffdb" << std::endl;
+}
