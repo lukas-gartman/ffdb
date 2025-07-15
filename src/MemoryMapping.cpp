@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <math.h>
 
 MemoryMapping::MemoryMapping(
     std::string filepath,
@@ -65,7 +66,7 @@ shared_state(nullptr) {
         shared_state->rev_lock.init();
         shared_state->resize_rw_lock.init();
 
-        shared_state->top = 1; // 0 is null
+        shared_state->top = SMALL_ALIGNMENT; // 0 is null
 
         // The rest is zeroed by ftruncate
     }
@@ -150,7 +151,7 @@ void MemoryMapping::unregister_revision(Revision *rev) {
 }
 
 void MemoryMapping::lock(DBMode mode) {
-    if (size != shared_state->mmap_size) resize_map();
+    if (size != shared_state->mmap_size) resize_map(0);
 
     if (mode == DB_WRITE) shared_state->write_lock.lock();
     else if (mode == DB_READ) shared_state->resize_rw_lock.read_lock();
@@ -246,13 +247,40 @@ size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
     return new_size;
 }
 
-void MemoryMapping::resize_map() {
+// TODO: Experiment with other growth functions
+// Assumes min_size + curr_size > 0
+size_t MemoryMapping::next_size(const size_t min_size, const size_t curr_size) {
+    const size_t total = min_size + curr_size;
+    const auto n = (size_t) ceil(log2((double) total));
+
+    // Return 2^n via bit shift
+    return (size_t) 1 << n;
+}
+
+void MemoryMapping::resize_map(size_t min_size) {
     shared_state->resize_rw_lock.write_lock();
 
     // It may happen that another process already resized the map, in
     // that case we only need to remap the memory and update size.
-    const size_t new_size =
-        shared_state->mmap_size != size ? shared_state->mmap_size : size * 2;
+    //const size_t new_size =
+    //    shared_state->mmap_size != size ? shared_state->mmap_size : next_size(min_size, size);
+
+    size_t new_size;
+    if (shared_state->mmap_size != size) {
+        std::cout << "Remap map to size " << shared_state->mmap_size << std::endl;
+        new_size = shared_state->mmap_size;
+    } else {
+        std::cout << "Resize and remap to size  " << next_size(min_size, size) << std::endl;
+        new_size = next_size(min_size, size);
+    }
+
+    if (base != nullptr) {
+        std::cout << base << std::endl;
+    } else {
+        std::cout << "base is null." << std::endl;
+    }
+
+    std::cout << "Old base: " << base << std::endl;
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {

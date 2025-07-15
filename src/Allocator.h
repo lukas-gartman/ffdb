@@ -9,7 +9,7 @@
 
 class Allocator {
 public:
-    Allocator(std::function<size_t()> resize_fn)
+    Allocator(std::function<size_t(size_t)> resize_fn)
         : curr_ws(nullptr), resize_callback(std::move(resize_fn)) {}
 
     template<class A> Ref<A> malloc(const size_t extra_bytes = 0) {
@@ -27,25 +27,23 @@ public:
         return curr_ws != nullptr;
     }
 
-    void dump_block_descrs();
+    void dump_block_descrs() const;
 
 private:
     WriterState *curr_ws;
 
+    static size_t align_bytes(size_t bytes);
+    static size_t bytes_left_in_page(Object offset);
+
     Object malloc_internal(size_t bytes);
     void free_internal(Object obj, size_t bytes);
-
-    Object malloc_top(size_t bytes);
 
     Ref<BlockDescr> new_block_descr(Block block);
     Ref<BlockDescr> upd_block_descr(Ref<BlockDescr> descr);
     void insert_block_descr(Block block);
     Object delete_block_descr(size_t block_size);
 
-    bool fits_within_page(Object offset, size_t size) const;
-    size_t bytes_left_in_page(Object offset) const;
-
-    std::function<size_t()> resize_callback;
+    std::function<size_t(size_t)> resize_callback;
 };
 
 #endif //ALLOCATOR_H

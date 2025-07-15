@@ -18,6 +18,7 @@ private:
     pid_t pid; // Store so we won't have to call getpid() which is a syscall every time.
 
     static size_t calc_mem_map_size(size_t init_size);
+    static size_t next_size(size_t min_size, size_t curr_size);
 
     void cleanup() noexcept;
 
@@ -41,7 +42,7 @@ public:
     void init_wr_txn(WriterState *ws);
     void apply_wr_txn(WriterState *ws);
 
-    void resize_map();
+    void resize_map(size_t min_size);
 
     size_t get_size() const noexcept {
         return size;

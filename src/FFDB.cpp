@@ -4,8 +4,8 @@
 FFDB::FFDB(std::string filepath, int flags, int mode, size_t init_size) {
     mmap = new MemoryMapping(std::move(filepath), flags, mode, init_size);
     alloc = new Allocator(
-        [this]() {
-            mmap->resize_map();
+        [this](size_t min_size) {
+            mmap->resize_map(min_size);
             return mmap->get_size();
         });
 }

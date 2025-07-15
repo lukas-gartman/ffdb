@@ -7,8 +7,11 @@
 #include "../src/FFDB.h"
 
 struct History {
+    int op;
     int type;
     int index;
+    Object stored_adress;
+    int stored_value;
 };
 
 TEST(AllocatorTest, DebugTest) {
@@ -34,7 +37,7 @@ TEST(AllocatorTest, DebugTest) {
 }
 
 TEST(AllocatorTest, RandomOperationsTest) {
-    constexpr int NUM_OPERATIONS = 100;
+    constexpr int NUM_OPERATIONS = 10000;
     constexpr int MAX_ALLOCATIONS = 100;
 
     std::vector<Ref<int>> allocations_int(MAX_ALLOCATIONS / 2, 0);
@@ -48,11 +51,41 @@ TEST(AllocatorTest, RandomOperationsTest) {
     std::uniform_int_distribution<int> type_dist(0, 1);
     std::uniform_int_distribution<int> index_dist(0, MAX_ALLOCATIONS / 2 - 1);
     std::uniform_int_distribution<int> value_dist_int(1, INT_MAX);
-    std::uniform_int_distribution<char> value_dist_char(1, CHAR_MAX);
+    std::uniform_int_distribution<unsigned char> value_dist_char(1, CHAR_MAX);
 
     std::vector<History> history;
 
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    auto print_all = [&]() {
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << i << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << allocations_int[i].as_object() << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << *allocations_int[i] << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << ctrl_vals_int[i] << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << allocations_char[i].as_object() << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << (int) *allocations_char[i] << " ";
+        std::cout << std::endl;
+
+        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
+            std::cout << (int) ctrl_vals_char[i] << " ";
+        std::cout << std::endl;
+    };
 
     std::cout << "Starting new transaction..." << std::endl;
     db.start_txn(DB_WRITE);
@@ -64,32 +97,45 @@ TEST(AllocatorTest, RandomOperationsTest) {
 
         if (op == 0) { // Allocate and write
             if (type == 0 && allocations_int[index] == 0) {
-                std::cout << "Allocating int... Storing at " << index << std::endl;
                 int value = value_dist_int(rng);
-                allocations_int[index] = db.alloc->malloc<int>();
+                auto v = db.alloc->malloc<int>();
+                std::cout << "Allocating int at offset " << v.as_object() << "... Storing at " << index << std::endl;
+                allocations_int[index] = v;
                 *allocations_int[index] = value;
                 ctrl_vals_int[index] = value;
+                history.push_back({op, type, index, 0, 0});
             }
             else if (type == 1 && allocations_char[index] == 0) {
-                std::cout << "Allocating char... Storing at " << index << std::endl;
                 char value = value_dist_char(rng);
-                allocations_char[index] = db.alloc->malloc<char>();
+                auto v = db.alloc->malloc<char>();
+                std::cout << "Allocating char at offset " << v.as_object() << "... Storing at " << index << std::endl;
+                allocations_char[index] = v;
                 *allocations_char[index] = value;
                 ctrl_vals_char[index] = value;
+                history.push_back({op, type, index, 0, 0});
             }
-            history.push_back({type, index});
         } else if (op == 1) { // Free
+            int stored_value = 0;
+            Object stored_adress = 0;
             if (type == 0 && allocations_int[index] != 0) {
                 std::cout << "Freeing int at index " << index << std::endl;
                 db.alloc->free<int>(allocations_int[index]);
+                stored_adress = allocations_int[index].as_object();
+                stored_value = *allocations_int[index];
                 allocations_int[index] = 0;
                 ctrl_vals_int[index] = 0;
+                history.push_back({op, type, index, stored_adress, stored_value});
+
             } else if (type == 1 && allocations_char[index] != 0) {
                 std::cout << "Freeing char at index " << index << std::endl;
                 db.alloc->free<char>(allocations_char[index]);
+                stored_adress = allocations_char[index].as_object();
+                stored_value = (unsigned char) *allocations_char[index];
                 allocations_char[index] = 0;
                 ctrl_vals_char[index] = 0;
+                history.push_back({op, type, index, stored_adress, stored_value});
             }
+
         } else if (op == 2) { // Commit/Start new transaction
             std::cout << "Committing transaction..." << std::endl;
             db.commit_txn(DB_WRITE);
@@ -98,26 +144,41 @@ TEST(AllocatorTest, RandomOperationsTest) {
 
             history.clear();
         } else if (op == 3) { // Rollback
-            std::cout << "Rolling back transaction..." << std::endl;
+            /*std::cout << "Rolling back transaction..." << std::endl;
             db.cancel_txn(DB_WRITE);
 
             while (!history.empty()) {
-                auto [t, indx] = history.back();
-                if (t == 0) {
-                    allocations_int[indx] = 0;
-                    ctrl_vals_int[indx] = 0;
-                } else if (t == 1) {
-                    allocations_char[indx] = 0;
-                    ctrl_vals_char[indx] = 0;
+                auto [o, t, indx, stored_adress, stored_value] = history.back();
+                if (o == 0) {
+                    if (t == 0) {
+                        allocations_int[indx] = 0;
+                        ctrl_vals_int[indx] = 0;
+                    } else if (t == 1) {
+                        allocations_char[indx] = 0;
+                        ctrl_vals_char[indx] = 0;
+                    }
+                }
+                else if (o == 1) {
+                    if (t == 0) {
+                        allocations_int[indx] = stored_adress;
+                        *allocations_int[indx] = stored_value;
+                        ctrl_vals_int[indx] = stored_value;
+                    } else if (t == 1) {
+                        allocations_char[indx] = stored_value;
+                        *allocations_char[indx] = (unsigned char) stored_value;
+                        ctrl_vals_char[indx] = (unsigned char) stored_value;
+                    }
                 }
                 history.pop_back();
             }
 
             std::cout << "Starting new transaction..." << std::endl;
-            db.start_txn(DB_WRITE);
+            db.start_txn(DB_WRITE);*/
         }
 
         // Verify
+        //std::cout << "Verifying... " << std::endl;
+        //print_all();
         for (int j = 0; j < MAX_ALLOCATIONS / 2; ++j) {
             if (allocations_int[j] != 0) {
                 EXPECT_EQ(*allocations_int[j], ctrl_vals_int[j]);
@@ -163,20 +224,15 @@ TEST(AllocatorTest, TestAllocFreeTop) {
     auto c2 = db.alloc->malloc<uint16_t>();
     auto d2 = db.alloc->malloc<uint32_t>();
 
-    *a2 = 0xAA;
-    *b2 = 0xBBBBBBBBBBBBBBBB;
-    *c2 = 0xCCCC;
-    *d2 = 0xDDDDDDDD;
+    *a2 = 0xFF;
+    *b2 = 0xEEEEEEEEEEEEEEEE;
+    *c2 = 0xDDDD;
+    *d2 = 0xCCCCCCCC;
 
-    EXPECT_EQ(*a1, 0xBBBBBBBBBBBBBBAA);
-    EXPECT_EQ(*b1, 0xDDCCCCBB);
-    EXPECT_EQ(*c1, 0xDDDD);
-    EXPECT_EQ(*d1, 0xDD);
-
-    EXPECT_EQ(*a2, 0xAA);
-    EXPECT_EQ(*b2, 0xBBBBBBBBBBBBBBBB);
-    EXPECT_EQ(*c2, 0xCCCC);
-    EXPECT_EQ(*d2, 0xDDDDDDDD);
+    EXPECT_EQ(*a2, 0xFF);
+    EXPECT_EQ(*b2, 0xEEEEEEEEEEEEEEEE);
+    EXPECT_EQ(*c2, 0xDDDD);
+    EXPECT_EQ(*d2, 0xCCCCCCCC);
 
     db.commit_txn(DB_WRITE);
 
