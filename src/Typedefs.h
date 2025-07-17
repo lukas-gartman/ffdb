@@ -13,7 +13,7 @@ const size_t CACHE_LINE_SIZE = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 const size_t LOGICAL_PAGE_SIZE = 4096; // Undefined behaviour if not a power of two
 const size_t MIN_PAGE_SIZE = SYSTEM_PAGE_SIZE * 2;
 
-const size_t SMALL_ALIGNMENT = 1;
+const size_t SMALL_ALIGNMENT = 16;
 const size_t LARGE_ALIGNMENT = LOGICAL_PAGE_SIZE;
 
 const size_t ALIGNMENT_THRESHOLD = LARGE_ALIGNMENT;

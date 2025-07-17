@@ -167,8 +167,7 @@ void MemoryMapping::unlock(DBMode mode) {
 void MemoryMapping::init_wr_txn(WriterState *ws) {
     if (ws == nullptr)
         throw std::runtime_error("No transaction started!");
-    if (base == nullptr) std::cout << "Base is null!" << std::endl;
-    std::cout << base << ", " << size << std::endl;
+
     if (mprotect(base, size, PROT_READ | PROT_WRITE) == -1)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
@@ -262,25 +261,8 @@ void MemoryMapping::resize_map(size_t min_size) {
 
     // It may happen that another process already resized the map, in
     // that case we only need to remap the memory and update size.
-    //const size_t new_size =
-    //    shared_state->mmap_size != size ? shared_state->mmap_size : next_size(min_size, size);
-
-    size_t new_size;
-    if (shared_state->mmap_size != size) {
-        std::cout << "Remap map to size " << shared_state->mmap_size << std::endl;
-        new_size = shared_state->mmap_size;
-    } else {
-        std::cout << "Resize and remap to size  " << next_size(min_size, size) << std::endl;
-        new_size = next_size(min_size, size);
-    }
-
-    if (base != nullptr) {
-        std::cout << base << std::endl;
-    } else {
-        std::cout << "base is null." << std::endl;
-    }
-
-    std::cout << "Old base: " << base << std::endl;
+    const size_t new_size =
+        shared_state->mmap_size != size ? shared_state->mmap_size : next_size(min_size, size);
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {

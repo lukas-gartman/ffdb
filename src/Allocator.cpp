@@ -6,8 +6,7 @@ size_t Allocator::align_bytes(const size_t bytes) {
         const size_t alignment =
             bytes >= ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
 
-        //return (bytes + alignment - 1) & ~(alignment - 1);
-        return bytes;
+        return (bytes + alignment - 1) & ~(alignment - 1);
 }
 
 size_t Allocator::bytes_left_in_page(const Object offset) {
@@ -140,13 +139,13 @@ Ref<BlockDescr> Allocator::new_block_descr(Block block) {
                 curr_ws->unused_descrs->next_unused;
     }
     else {
-        if (sizeof(BlockDescr) > curr_ws->mmap_size - curr_ws->top) {
-            std::cout << "resizing" << std::endl;
-            curr_ws->mmap_size = resize_callback(sizeof(BlockDescr));
-        }
+        const size_t bytes = align_bytes(sizeof(BlockDescr));
+
+        if (bytes > curr_ws->mmap_size - curr_ws->top)
+            curr_ws->mmap_size = resize_callback(bytes);
 
         descr = curr_ws->top;
-        curr_ws->top += sizeof(BlockDescr);
+        curr_ws->top += bytes;
     }
 
     descr->block = block;
