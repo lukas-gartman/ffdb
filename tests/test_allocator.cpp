@@ -121,3 +121,28 @@ TEST(AllocatorTest, TestFreeLFBlock) {
 
     remove("test.db");
 }
+
+TEST(AllocatorTest, TestResize) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_txn(DB_WRITE);
+
+    const size_t mmap_size1 = db.mmap->get_size();
+
+    db.alloc->malloc<uint8_t>(SYSTEM_PAGE_SIZE);
+
+    const size_t mmap_size2 = db.mmap->get_size();
+
+    EXPECT_LT(mmap_size1, mmap_size2);
+
+    db.commit_txn(DB_WRITE);
+
+    remove("test.db");
+}
+
+// Test rollback: Do all kinds of operations and commit, do all kinds of operations and rollback. Verify that
+// The first transaction is intact and the second transaction is rolled back.
+
+// Test concurrent transactions: Need to test readonly transactions in different ways.
+
+// Test block descr system in some way

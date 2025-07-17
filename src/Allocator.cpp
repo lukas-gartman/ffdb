@@ -41,10 +41,7 @@ Object Allocator::malloc_internal(size_t bytes) {
     if (obj != 0) return obj;
 
     // The above failed. Get memory from the top.
-    if (bytes > curr_ws->mmap_size - curr_ws->top) {
-        std::cout << "resizing" << std::endl;
-        curr_ws->mmap_size = resize_callback(bytes);
-    }
+    if (bytes > curr_ws->mmap_size - curr_ws->top) curr_ws->mmap_size = resize_callback(bytes);
 
     obj = curr_ws->top;
     curr_ws->top += bytes;
