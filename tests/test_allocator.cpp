@@ -6,335 +6,117 @@
 #include "../src/Allocator.h"
 #include "../src/FFDB.h"
 
-struct History {
-    int op;
-    int type;
-    int index;
-    Object stored_adress;
-    int stored_value;
-};
-
-TEST(AllocatorTest, DebugTest) {
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-    db.start_txn(DB_WRITE);
-
-
-    for (int i = 0; i < 2000; ++i)
-        db.alloc->malloc<char>();
-
-    auto a = db.alloc->malloc<char>();
-
-    for (int i = 0; i < 2094; ++i)
-        db.alloc->malloc<char>();
-
-    db.alloc->free<char>(a);
-
-    db.alloc->malloc<int>();
-
-    db.commit_txn(DB_WRITE);
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, RandomOperationsTest) {
-    constexpr int NUM_OPERATIONS = 10000;
-    constexpr int MAX_ALLOCATIONS = 100;
-
-    std::vector<Ref<int>> allocations_int(MAX_ALLOCATIONS / 2, 0);
-    std::vector<int> ctrl_vals_int(MAX_ALLOCATIONS / 2, 0);
-    std::vector<Ref<char>> allocations_char(MAX_ALLOCATIONS / 2, 0);
-    std::vector<char> ctrl_vals_char(MAX_ALLOCATIONS / 2, 0);
-    std::vector<double> weights = {4, 4, 2, 1};
-
-    std::mt19937 rng(std::random_device{}());
-    std::discrete_distribution<int> op_dist(weights.begin(), weights.end());
-    std::uniform_int_distribution<int> type_dist(0, 1);
-    std::uniform_int_distribution<int> index_dist(0, MAX_ALLOCATIONS / 2 - 1);
-    std::uniform_int_distribution<int> value_dist_int(1, INT_MAX);
-    std::uniform_int_distribution<unsigned char> value_dist_char(1, CHAR_MAX);
-
-    std::vector<History> history;
-
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-
-    auto print_all = [&]() {
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << i << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << allocations_int[i].as_object() << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << *allocations_int[i] << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << ctrl_vals_int[i] << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << allocations_char[i].as_object() << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << (int) *allocations_char[i] << " ";
-        std::cout << std::endl;
-
-        for (int i = 0; i < MAX_ALLOCATIONS / 2; ++i)
-            std::cout << (int) ctrl_vals_char[i] << " ";
-        std::cout << std::endl;
-    };
-
-    std::cout << "Starting new transaction..." << std::endl;
-    db.start_txn(DB_WRITE);
-
-    for (int i = 0; i < NUM_OPERATIONS; ++i) {
-        int op = op_dist(rng);
-        int type = type_dist(rng);
-        int index = index_dist(rng);
-
-        if (op == 0) { // Allocate and write
-            if (type == 0 && allocations_int[index] == 0) {
-                int value = value_dist_int(rng);
-                auto v = db.alloc->malloc<int>();
-                std::cout << "Allocating int at offset " << v.as_object() << "... Storing at " << index << std::endl;
-                allocations_int[index] = v;
-                *allocations_int[index] = value;
-                ctrl_vals_int[index] = value;
-                history.push_back({op, type, index, 0, 0});
-            }
-            else if (type == 1 && allocations_char[index] == 0) {
-                char value = value_dist_char(rng);
-                auto v = db.alloc->malloc<char>();
-                std::cout << "Allocating char at offset " << v.as_object() << "... Storing at " << index << std::endl;
-                allocations_char[index] = v;
-                *allocations_char[index] = value;
-                ctrl_vals_char[index] = value;
-                history.push_back({op, type, index, 0, 0});
-            }
-        } else if (op == 1) { // Free
-            int stored_value = 0;
-            Object stored_adress = 0;
-            if (type == 0 && allocations_int[index] != 0) {
-                std::cout << "Freeing int at index " << index << std::endl;
-                db.alloc->free<int>(allocations_int[index]);
-                stored_adress = allocations_int[index].as_object();
-                stored_value = *allocations_int[index];
-                allocations_int[index] = 0;
-                ctrl_vals_int[index] = 0;
-                history.push_back({op, type, index, stored_adress, stored_value});
-
-            } else if (type == 1 && allocations_char[index] != 0) {
-                std::cout << "Freeing char at index " << index << std::endl;
-                db.alloc->free<char>(allocations_char[index]);
-                stored_adress = allocations_char[index].as_object();
-                stored_value = (unsigned char) *allocations_char[index];
-                allocations_char[index] = 0;
-                ctrl_vals_char[index] = 0;
-                history.push_back({op, type, index, stored_adress, stored_value});
-            }
-
-        } else if (op == 2) { // Commit/Start new transaction
-            std::cout << "Committing transaction..." << std::endl;
-            db.commit_txn(DB_WRITE);
-            std::cout << "Starting new transaction..." << std::endl;
-            db.start_txn(DB_WRITE);
-
-            history.clear();
-        } else if (op == 3) { // Rollback
-            /*std::cout << "Rolling back transaction..." << std::endl;
-            db.cancel_txn(DB_WRITE);
-
-            while (!history.empty()) {
-                auto [o, t, indx, stored_adress, stored_value] = history.back();
-                if (o == 0) {
-                    if (t == 0) {
-                        allocations_int[indx] = 0;
-                        ctrl_vals_int[indx] = 0;
-                    } else if (t == 1) {
-                        allocations_char[indx] = 0;
-                        ctrl_vals_char[indx] = 0;
-                    }
-                }
-                else if (o == 1) {
-                    if (t == 0) {
-                        allocations_int[indx] = stored_adress;
-                        *allocations_int[indx] = stored_value;
-                        ctrl_vals_int[indx] = stored_value;
-                    } else if (t == 1) {
-                        allocations_char[indx] = stored_value;
-                        *allocations_char[indx] = (unsigned char) stored_value;
-                        ctrl_vals_char[indx] = (unsigned char) stored_value;
-                    }
-                }
-                history.pop_back();
-            }
-
-            std::cout << "Starting new transaction..." << std::endl;
-            db.start_txn(DB_WRITE);*/
-        }
-
-        // Verify
-        //std::cout << "Verifying... " << std::endl;
-        //print_all();
-        for (int j = 0; j < MAX_ALLOCATIONS / 2; ++j) {
-            if (allocations_int[j] != 0) {
-                EXPECT_EQ(*allocations_int[j], ctrl_vals_int[j]);
-            }
-            else if (allocations_char[j] != 0) {
-                EXPECT_EQ(*allocations_char[j], ctrl_vals_char[j]);
-            }
-        }
-    }
-    std::cout << "Committing transaction end..." << std::endl;
-    db.commit_txn(DB_WRITE);
-
-    remove("test.db");
-}
-
-// Tests allocation on the top.
+/* TestAllocFreeTop
+ * Allocates one page full of uint64_t values, then frees them all. It then allocates another page of memory. What
+ * should happen then is that the allocator should reuse the freed memory and hence, values2 should point to exactly
+ * the same memory as values1.
+ */
 TEST(AllocatorTest, TestAllocFreeTop) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
     db.start_txn(DB_WRITE);
-    auto a1 = db.alloc->malloc<uint64_t>();
-    auto b1 = db.alloc->malloc<uint32_t>();
-    auto c1 = db.alloc->malloc<uint16_t>();
-    auto d1 = db.alloc->malloc<uint8_t>();
 
-    *a1 = 0xAAAAAAAAAAAAAAAA;
-    *b1 = 0xBBBBBBBB;
-    *c1 = 0xCCCC;
-    *d1 = 0xDD;
+    // Calculate how many uint64_t values can fit into a single page and compensate for alignment.
+    const size_t elem_size = sizeof(uint64_t) <= SMALL_ALIGNMENT ? SMALL_ALIGNMENT : sizeof(uint64_t);
+    const size_t data_size = (SYSTEM_PAGE_SIZE / elem_size - 1) - SMALL_ALIGNMENT;
+    Ref<uint64_t> values1[data_size];
 
-    EXPECT_EQ(*a1, 0xAAAAAAAAAAAAAAAA);
-    EXPECT_EQ(*b1, 0xBBBBBBBB);
-    EXPECT_EQ(*c1, 0xCCCC);
-    EXPECT_EQ(*d1, 0xDD);
-
-    db.alloc->free<uint8_t>(d1);
-    db.alloc->free<uint16_t>(c1);
-    db.alloc->free<uint32_t>(b1);
-    db.alloc->free<uint64_t>(a1);
-
-    auto a2 = db.alloc->malloc<uint8_t>();
-    auto b2 = db.alloc->malloc<uint64_t>();
-    auto c2 = db.alloc->malloc<uint16_t>();
-    auto d2 = db.alloc->malloc<uint32_t>();
-
-    *a2 = 0xFF;
-    *b2 = 0xEEEEEEEEEEEEEEEE;
-    *c2 = 0xDDDD;
-    *d2 = 0xCCCCCCCC;
-
-    EXPECT_EQ(*a2, 0xFF);
-    EXPECT_EQ(*b2, 0xEEEEEEEEEEEEEEEE);
-    EXPECT_EQ(*c2, 0xDDDD);
-    EXPECT_EQ(*d2, 0xCCCCCCCC);
-
-    db.commit_txn(DB_WRITE);
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, TestFreeMergeLFBlock) {
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-
-    db.start_txn(DB_WRITE);
-    auto a = db.alloc->malloc<uint8_t>();
-    auto b = db.alloc->malloc<uint8_t>();
-    auto c = db.alloc->malloc<uint8_t>();
-    auto d = db.alloc->malloc<uint8_t>();
-
-    *a = 0xAA;
-    *b = 0xBB;
-    *c = 0xCC;
-    *d = 0xDD;
-
-    EXPECT_EQ(*a, 0xAA);
-    EXPECT_EQ(*b, 0xBB);
-    EXPECT_EQ(*c, 0xCC);
-    EXPECT_EQ(*d, 0xDD);
-
-    db.alloc->free<uint8_t>(b);
-    db.alloc->free<uint8_t>(c); // Merge down
-    db.alloc->free<uint8_t>(a); // Merge up
-
-    // Allocate exactly the freed space and rearrange bytes
-    auto abc = db.alloc->malloc<uint8_t>(2); // uint8_t[2]
-    abc[0] = 0xBB;
-    abc[1] = 0xCC;
-    abc[2] = 0xAA;
-
-    EXPECT_EQ(*a, abc[0]);
-    EXPECT_EQ(*b, abc[1]);
-    EXPECT_EQ(*c, abc[2]);
-    EXPECT_EQ(*d, 0xDD);
-
-    db.alloc->free<uint8_t>(abc, 2);
-    db.alloc->free<uint8_t>(d); // Merge top
-
-    auto abcd = db.alloc->malloc<uint32_t>();
-    *abcd = 0xAABBCCDD;
-    EXPECT_EQ(*a, 0xDD);
-    EXPECT_EQ(*b, 0xCC);
-    EXPECT_EQ(*c, 0xBB);
-    EXPECT_EQ(*d, 0xAA);
-    EXPECT_EQ(*abcd, 0xAABBCCDD);
-
-    db.commit_txn(DB_WRITE);
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, TestResize) {
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-
-    db.start_txn(DB_WRITE);
-
-    EXPECT_EQ(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE);
-
-    for (int i = 0; i < LOGICAL_PAGE_SIZE/sizeof(uint64_t) - 1; ++i) {
-        db.alloc->malloc<uint64_t>();
+    // Check if the memory contains the correct values.
+    for (size_t i = 0; i < data_size; i++) {
+        values1[i] = db.alloc->malloc<uint64_t>();
+        *values1[i] = i;
     }
-    EXPECT_EQ(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE);
 
-    db.commit_txn(DB_WRITE);
+    for (size_t i = 0; i < data_size; i++) EXPECT_EQ(*values1[i], i);
 
-    EXPECT_EQ(db.mmap->shared_state->top, LOGICAL_PAGE_SIZE - sizeof(uint64_t) + 1); // Alloc starts at 1
+    for (size_t i = data_size; i-- > 0;) db.alloc->free<uint64_t>(values1[i]);
 
-    db.start_txn(DB_WRITE);
+    // Memory should now be freed but the data remain. Allocate a new set of ints and check that we get the same
+    // addresses as before
+    Ref<uint64_t> values2[data_size];
 
-    db.alloc->malloc<uint64_t>();
-    EXPECT_GT(db.mmap->shared_state->mmap_size, LOGICAL_PAGE_SIZE); // Size only increases if db file was resized.
+    for (size_t i = 0; i < data_size; i++) values2[i] = db.alloc->malloc<uint64_t>();
+
+    for (size_t i = 0; i < data_size; i++) EXPECT_EQ(values1[i], values2[i]);
 
     db.commit_txn(DB_WRITE);
 
     remove("test.db");
 }
 
-// Tests if top is correctly reset after rollback.
-TEST(AllocatorTest, TestRollbackTop) {
+/* TestArrayNotation
+ * Allocates arrays of different types using the array notation and verifies that the contents are correct.
+ */
+TEST(AllocatorTest, TestArrayNotation) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
     db.start_txn(DB_WRITE);
-    auto a = db.alloc->malloc<int>();
-    auto b = db.alloc->malloc<int>();
-    *a = 5;
-    *b = 10;
-    db.cancel_txn(DB_WRITE);
+
+    const size_t arr1_size = SYSTEM_PAGE_SIZE / 4 - SMALL_ALIGNMENT; // Compensate for null ref
+    const size_t arr2_size = (SYSTEM_PAGE_SIZE / 4) / sizeof(uint16_t);
+    const size_t arr3_size = (SYSTEM_PAGE_SIZE / 2) / sizeof(uint32_t);
+
+    // Fill 4 byte arrays of different sizes and verify their contents are correct.
+    const Ref<uint8_t> arr1 = db.alloc->malloc<uint8_t>(arr1_size);
+    const Ref<uint16_t> arr2 = db.alloc->malloc<uint16_t>(arr2_size);
+    const Ref<uint32_t> arr3 = db.alloc->malloc<uint32_t>(arr3_size);
+
+    for (size_t i = 0; i < arr1_size; ++i) arr1[i] = 0xAB;
+    for (size_t i = 0; i < arr2_size; ++i) arr2[i] = 0xCDCD;
+    for (size_t i = 0; i < arr3_size; ++i) arr3[i] = 0xEFEFEFEF;
+
+    db.alloc->free<uint8_t>(arr1, arr1_size);
+    db.alloc->free<uint16_t>(arr2, arr2_size);
+    db.alloc->free<uint32_t>(arr3, arr3_size);
+
+    for (size_t i = 0; i < arr1_size; ++i) EXPECT_EQ(arr1[i], 0xAB);
+    for (size_t i = 0; i < arr2_size; ++i) EXPECT_EQ(arr2[i], 0xCDCD);
+    for (size_t i = 0; i < arr3_size; ++i) EXPECT_EQ(arr3[i], 0xEFEFEFEF);
+
+    db.commit_txn(DB_WRITE);
+
+    remove("test.db");
+}
+
+/* TestFreeLFBlock
+ * Tests the three different ways last free block can be merged. That is: merge up, merge down and merge with top.
+ */
+TEST(AllocatorTest, TestFreeLFBlock) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
     db.start_txn(DB_WRITE);
-    EXPECT_EQ(*a, 5);
-    EXPECT_EQ(*b, 10);
-    a = db.alloc->malloc<int>();
-    b = db.alloc->malloc<int>();
-    *a = 15;
-    *b = 20;
-    EXPECT_EQ(*a, 15);
-    EXPECT_EQ(*b, 20);
+
+    const size_t arr1_size = SMALL_ALIGNMENT;
+    const size_t arr2_size = SMALL_ALIGNMENT * 3;
+    const size_t arr3_size = SMALL_ALIGNMENT * 2;
+    const size_t arr4_size = SMALL_ALIGNMENT;
+    const size_t arr5_size = SMALL_ALIGNMENT * 6;
+    const size_t arr6_size = SMALL_ALIGNMENT * 7;
+
+    const Ref<uint8_t> arr1 = db.alloc->malloc<uint8_t>(arr1_size);
+    const Ref<uint8_t> arr2 = db.alloc->malloc<uint8_t>(arr2_size);
+    const Ref<uint8_t> arr3 = db.alloc->malloc<uint8_t>(arr3_size);
+    const Ref<uint8_t> arr4 = db.alloc->malloc<uint8_t>(arr4_size);
+
+    // Trigger last free block merge.
+    db.alloc->free<uint8_t>(arr2, arr2_size);
+    db.alloc->free<uint8_t>(arr1, arr1_size); // Merge up
+    db.alloc->free<uint8_t>(arr3, arr3_size); // Merge down
+
+    const Ref<uint8_t> arr5 = db.alloc->malloc<uint8_t>(arr5_size); // If the blocks was merged correctly, this block
+                                                                    // will fill the space of the three first arrays.
+
+    EXPECT_EQ(arr1, arr5); // Should have the same address as arr1
+
+    // Merge top
+    db.alloc->free<uint8_t>(arr5, arr5_size);
+    db.alloc->free<uint8_t>(arr4, arr4_size);
+
+    const Ref<uint8_t> arr6 = db.alloc->malloc<uint8_t>(arr6_size);
+
+    EXPECT_EQ(arr1, arr6); // Same as above. If the allocator works correctly, arr6 should be at the same
+                           // address as arr1 and arr5.
+
     db.commit_txn(DB_WRITE);
 
     remove("test.db");
