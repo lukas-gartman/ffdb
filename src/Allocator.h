@@ -4,7 +4,6 @@
 #include <functional>
 
 #include "Typedefs.h"
-#include "MemoryMapping.h"
 #include "WriterState.h"
 
 class Allocator {

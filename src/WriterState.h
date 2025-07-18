@@ -8,18 +8,20 @@
  * \struct WriterState
  * \brief Represents a transaction and its associated memory state.
  *
- * The Transaction struct encapsulates metadata about a transaction. It is used
- * to manage memory allocation and deallocation during the transaction's
- * lifecycle, allowing for commit or rollback operations.
+ * The Transaction struct stores data about a transaction. It is used to manage memory allocation and deallocation
+ * during the transaction's lifecycle, allowing for commit or rollback operations.
  */
 struct WriterState {
+    /** \brief The unique identifier of the transaction that created the oldest version of the database still in use.*/
     size_t min_txn_id;
 
     /** \brief A unique identifier for the transaction. */
     size_t id;
 
+    /** \brief The size of the memory map in bytes. */
     size_t mmap_size;
 
+    /** \brief The offset to the top adress outside of the transaction. */
     Object old_top;
 
     /** \brief The offset to the top adress associated with the transaction. */
@@ -40,8 +42,11 @@ struct WriterState {
      * list. */
     Ref<BlockDescr> pending_unused_last;
 
-    /** \brief A reference to the block that was freed most recently. */
+    /** \brief Last free block. A reference to the block that was freed most recently. */
     Block lf_block;
+
+    /** \brief Left over block. A reference to the block that was left over because of alignment. */
+    Block lo_block;
 };
 
 enum TxnMode {

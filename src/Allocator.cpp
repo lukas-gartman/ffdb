@@ -14,8 +14,7 @@ size_t Allocator::bytes_left_in_page(const Object offset) {
 }
 
 Object Allocator::malloc_internal(size_t bytes) {
-    if (!is_active())
-        throw std::runtime_error("No transaction started");
+    if (!is_active()) throw std::runtime_error("No transaction started");
 
     Object obj;
 
@@ -60,15 +59,12 @@ void Allocator::free_internal(Object obj, size_t bytes) {
     if (txn_id == 0 && obj + bytes == curr_ws->top) {
         curr_ws->top -= bytes;
 
-        // TODO: Maybe instead of checking if lf_block.txn_id == 0, check if lf_block.obj >= mmap->state->top?
         if (curr_ws->lf_block.obj != 0 &&
             curr_ws->lf_block.txn_id == 0 &&
             curr_ws->lf_block.obj + curr_ws->lf_block.size == curr_ws->top) {
 
             curr_ws->top -= curr_ws->lf_block.size;
-            curr_ws->lf_block.obj = 0;
-            curr_ws->lf_block.size = 0;
-            curr_ws->lf_block.txn_id = 0;
+            curr_ws->lf_block = {0, 0, 0};
         }
         return;
     }
@@ -94,15 +90,12 @@ void Allocator::free_internal(Object obj, size_t bytes) {
         insert_block_descr(curr_ws->lf_block);
     }
 
-    curr_ws->lf_block.obj = obj;
-    curr_ws->lf_block.size = bytes;
-
     // 0 as an id here means that the last free block is located beyond
     // the top of the memory map. This is the case when the last free block
     // couldn't be merged with the transaction local top. This signifies
     // that the block can be immediately reused if it would be inserted
     // into the blockdescriptor list.
-    curr_ws->lf_block.txn_id = txn_id;
+    curr_ws->lf_block = {obj, bytes, txn_id};
 }
 
 void Allocator::activate(WriterState *ws) {
@@ -138,17 +131,13 @@ Ref<BlockDescr> Allocator::new_block_descr(Block block) {
     else {
         const size_t bytes = align_bytes(sizeof(BlockDescr));
 
-        if (bytes > curr_ws->mmap_size - curr_ws->top)
-            curr_ws->mmap_size = resize_callback(bytes);
+        if (bytes > curr_ws->mmap_size - curr_ws->top) curr_ws->mmap_size = resize_callback(bytes);
 
         descr = curr_ws->top;
         curr_ws->top += bytes;
     }
 
-    descr->block = block;
-    descr->next_free = 0;
-    descr->next_unused = 0;
-    descr->txn_id = curr_ws->id;
+    *descr = {block, 0, 0, curr_ws->id};
 
     return descr;
 }
@@ -163,8 +152,7 @@ Ref<BlockDescr> Allocator::upd_block_descr(Ref<BlockDescr> descr) {
     // the free list from before the start of the current_transaction.
     descr->next_unused = curr_ws->pending_unused_descrs;
     curr_ws->pending_unused_descrs = descr;
-    if (curr_ws->pending_unused_last == 0)
-        curr_ws->pending_unused_last = descr;
+    if (curr_ws->pending_unused_last == 0) curr_ws->pending_unused_last = descr;
 
     Ref<BlockDescr> new_descr = new_block_descr(descr->block);
     new_descr->next_free = descr->next_free;
@@ -190,6 +178,7 @@ void Allocator::insert_block_descr(Block block) {
         // we will not need to CoW the current_descr.
         if (found) {
             descr->next_free = curr_descr;
+
             if (prev_descr != 0) prev_descr->next_free = descr;
             else curr_ws->free_blocks = descr; // Insert at the head
 
@@ -198,22 +187,17 @@ void Allocator::insert_block_descr(Block block) {
 
         // CoW this bad boy
         curr_descr = upd_block_descr(curr_descr);
-        if (prev_descr == 0) {
-            curr_ws->free_blocks = curr_descr;
-        } else {
-            prev_descr->next_free = curr_descr;
-        }
+
+        if (prev_descr == 0) curr_ws->free_blocks = curr_descr;
+        else prev_descr->next_free = curr_descr;
 
         prev_descr = curr_descr;
         curr_descr = curr_descr->next_free;
     }
 
     descr->next_free = 0;
-    if (prev_descr != 0) {
-        prev_descr->next_free = descr;
-    } else {
-        curr_ws->free_blocks = descr; // Insert as the only element
-    }
+    if (prev_descr != 0) prev_descr->next_free = descr;
+    else curr_ws->free_blocks = descr; // Insert as the only element
 }
 
 Object Allocator::delete_block_descr(const size_t block_size) {
@@ -244,21 +228,17 @@ Object Allocator::delete_block_descr(const size_t block_size) {
 
     while (curr_descr != best_fit) {
         curr_descr = upd_block_descr(curr_descr);
-        if (prev_descr == 0) {
-            curr_ws->free_blocks = curr_descr;
-        } else {
-            prev_descr->next_free = curr_descr;
-        }
+
+        if (prev_descr == 0) curr_ws->free_blocks = curr_descr;
+        else prev_descr->next_free = curr_descr;
 
         prev_descr = curr_descr;
         curr_descr = curr_descr->next_free;
     }
 
     // Remove the block descriptor from the free list.
-    if (prev_descr != 0)
-        prev_descr->next_free = curr_descr->next_free;
-    else
-        curr_ws->free_blocks = curr_descr->next_free;
+    if (prev_descr != 0) prev_descr->next_free = curr_descr->next_free;
+    else curr_ws->free_blocks = curr_descr->next_free;
 
     // If the block was allocated this transaction, it is added to the
     // unused list. Otherwise it is added to the pending unused list.
@@ -287,12 +267,8 @@ Object Allocator::delete_block_descr(const size_t block_size) {
     // If the block that best_fit pointed to is not empty it becomes the
     // new last freed block
     if (found_block.size != 0) {
-        if (curr_ws->lf_block.obj != 0) {
-            insert_block_descr(curr_ws->lf_block);
-        }
-        curr_ws->lf_block.obj = found_block.obj;
-        curr_ws->lf_block.size = found_block.size;
-        curr_ws->lf_block.txn_id = found_block.txn_id;
+        if (curr_ws->lf_block.obj != 0) insert_block_descr(curr_ws->lf_block);
+        curr_ws->lf_block = found_block;
     }
 
     return offset;
