@@ -240,8 +240,8 @@ size_t MemoryMapping::calc_mem_map_size(size_t init_size) {
     size_t new_size =
             ((init_size + LOGICAL_PAGE_SIZE - 1) / LOGICAL_PAGE_SIZE) * LOGICAL_PAGE_SIZE;
 
-    if (new_size < MIN_PAGE_SIZE)
-        new_size = MIN_PAGE_SIZE;
+    if (new_size < MIN_DB_SIZE)
+        new_size = MIN_DB_SIZE;
 
     return new_size;
 }
