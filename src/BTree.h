@@ -5,7 +5,7 @@
 #define BTREE_H
 
 #include <concepts>
-#include "Allocator.h"
+#include "FFDB2.h"
 
 namespace BTree {
 
@@ -90,7 +90,7 @@ template <Comparable K, typename V, int t>
 class BTree {
 private:
     Ref<Node<K, V, t>> root;
-    Allocator *allocator;
+    FFDB &db;
     int _size;
 
     /**
@@ -101,7 +101,7 @@ private:
      * \return A Ref to the newly created node.
      */
     Ref<Node<K, V, t>> createNode(bool isLeaf) {
-        Ref<Node<K, V, t>> node = allocator->malloc<Node<K, V, t>>();
+        Ref<Node<K, V, t>> node = db.malloc<Node<K, V, t>>();
         node->isLeaf = isLeaf;
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
@@ -120,7 +120,7 @@ private:
      * \param node The Ref to the node to be freed.
      */
     void freeNode(Ref<Node<K, V, t>> node) {
-        allocator->free(node);
+        db.free(node);
     }
 
     /**
@@ -614,10 +614,10 @@ public:
      * \brief Constructs a BTree with a given allocator.
      * \details Initializes the BTree with the provided memory allocator and creates an empty root node.
      *
-     * \param alloc A pointer to the memory allocator used for node allocation.
+     * \param db A reference to the database.
      */
-    explicit BTree(Allocator *alloc) : root(REF_NULL), _size(0) {
-        allocator = alloc;
+    explicit BTree(FFDB &db) : root(REF_NULL), db(db), _size(0) {
+        this->db = db;
         root = createNode(true);
     }
     // ~BTree() { deleteNode(root); }

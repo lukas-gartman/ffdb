@@ -7,6 +7,10 @@
 extern __thread unsigned char *current_base __attribute__((tls_model(
     "initial-exec")));
 
+typedef uintptr_t Offset;
+typedef size_t Size;
+typedef size_t Id;
+
 /** \brief The physical page size on the system.
  *
  *  The size (in bytes) of a physical memory page on the system. Is primarily used by the memory mapping
@@ -14,13 +18,13 @@ extern __thread unsigned char *current_base __attribute__((tls_model(
  *
  *  \see MemoryMapping
  */
-const size_t SYSTEM_PAGE_SIZE = sysconf(_SC_PAGESIZE);
+const Size SYSTEM_PAGE_SIZE = sysconf(_SC_PAGESIZE);
 
 /** \brief The cache line size on the system.
  *
  *  The size (in bytes) of a cache line on the system.
  */
-const size_t CACHE_LINE_SIZE = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+const Size CACHE_LINE_SIZE = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 
 /** \brief The logical page size within the database.
  *
@@ -30,7 +34,7 @@ const size_t CACHE_LINE_SIZE = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
  *
  *  \see Allocator
  */
-const size_t LOGICAL_PAGE_SIZE = SYSTEM_PAGE_SIZE;
+const Size LOGICAL_PAGE_SIZE = SYSTEM_PAGE_SIZE;
 
 /** \brief The minimum size needed for the database.
  *
@@ -39,7 +43,7 @@ const size_t LOGICAL_PAGE_SIZE = SYSTEM_PAGE_SIZE;
  *
  *  \see MemoryMapping
  */
-const size_t MIN_DB_SIZE = SYSTEM_PAGE_SIZE * 2;
+const Size MIN_DB_SIZE = SYSTEM_PAGE_SIZE * 2;
 
 /** \brief Alignment used for smaller objects.
  *
@@ -49,7 +53,7 @@ const size_t MIN_DB_SIZE = SYSTEM_PAGE_SIZE * 2;
  *
  *  \see Allocator::align_bytes
  */
-const size_t SMALL_ALIGNMENT = 16;
+const Size SMALL_ALIGNMENT = 16;
 
 /** \brief Alignment used for large.
  *
@@ -58,7 +62,7 @@ const size_t SMALL_ALIGNMENT = 16;
  *
  *  \see Allocator::align_bytes
  */
-const size_t LARGE_ALIGNMENT = LOGICAL_PAGE_SIZE;
+const Size LARGE_ALIGNMENT = LOGICAL_PAGE_SIZE;
 
 /** \brief Threshold that determines which alignment to use.
  *
@@ -66,34 +70,32 @@ const size_t LARGE_ALIGNMENT = LOGICAL_PAGE_SIZE;
  *
  *  \see Allocator::align_bytes
  */
-const size_t ALIGNMENT_THRESHOLD = LARGE_ALIGNMENT;
-
-typedef uintptr_t Object;
+const Size ALIGNMENT_THRESHOLD = LARGE_ALIGNMENT;
 
 template <class A> class Ref {
 private:
-    Object offset;
+    Offset offset;
 
 public:
     Ref(): offset(0) {}
-    Ref(const Object o): offset(o) {}
+    Ref(const Offset o): offset(o) {}
 
     A *operator->() const { return (A *)(current_base + offset); }
     operator A *() const { return (A *)(current_base + offset); }
 
     bool operator ==(const Ref &other) const {
-        return offset == other.as_object();
+        return offset == other.as_offset();
     }
 
     bool operator !=(const Ref &other) const {
-        return offset != other.as_object();
+        return offset != other.as_offset();
     }
 
-    bool operator ==(const Object other_offset) const {
+    bool operator ==(const Offset other_offset) const {
         return offset == other_offset;
     }
 
-    bool operator !=(const Object other_offset) const {
+    bool operator !=(const Offset other_offset) const {
         return offset != other_offset;
     }
 
@@ -106,7 +108,7 @@ public:
         return ((unsigned char *)(ptr) - current_base);
     }
 
-    Object as_object() const { return offset; }
+    Offset as_offset() const { return offset; }
 
     static Ref null() { return Ref(0); }
 

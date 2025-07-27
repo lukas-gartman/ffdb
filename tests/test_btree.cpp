@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "../src/BTree.h"
-#include "../src/FFDB.h"
+#include "../src/FFDB2.h"
 #include <fcntl.h>
 
 #include <cstdlib>
@@ -11,9 +11,9 @@
 
 TEST(BTreeTest, InsertTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
@@ -36,16 +36,16 @@ TEST(BTreeTest, InsertTest) {
 
     tree.print();
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int numKeys = 500000;
     for (int i = 1; i <= numKeys; ++i) {
@@ -56,16 +56,16 @@ TEST(BTreeTest, SequentialInsertTest) {
         EXPECT_TRUE(tree.search(i));
     }
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RandomInsert) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int numKeys = 50;
     std::srand(std::time(nullptr));
@@ -82,16 +82,16 @@ TEST(BTreeTest, RandomInsert) {
         EXPECT_TRUE(tree.search(key));
     }
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, DuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int numKeys = 1'000;
     std::srand(std::time(nullptr));
@@ -118,16 +118,16 @@ TEST(BTreeTest, DuplicateTest) {
 
     EXPECT_FALSE(hasDuplicate);
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     const int keys[] = {1, 2, 3, 3, 4};
     for (int key : keys) {
@@ -137,16 +137,16 @@ TEST(BTreeTest, ManualDuplicateTest) {
     tree.remove(3);
     EXPECT_FALSE(tree.search(3));
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RemoveTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
@@ -177,16 +177,16 @@ TEST(BTreeTest, RemoveTest) {
     EXPECT_TRUE(tree.search(30));
     EXPECT_TRUE(tree.search(17));
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, SequentialInsertRemove) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int numKeys = 1000000;
     for (int i = numKeys; i >= numKeys; --i) {
@@ -256,9 +256,9 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
 TEST(BTreeTest, RootNodeDelete) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE);
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     // Insertion order
     std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
@@ -293,7 +293,7 @@ TEST(BTreeTest, RootNodeDelete) {
     tree.print();
     EXPECT_FALSE(tree.search(21));
 
-    db.commit_txn(DB_WRITE);
+    db.commit_txn();
 
     remove("test.db");
 }
