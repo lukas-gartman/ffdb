@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "../src/BTree.h"
-#include "../src/FFDB.h"
+#include "../src/FFDB2.h"
 #include <fcntl.h>
 
 #include <cstdlib>
@@ -13,8 +13,8 @@ TEST(BTreeTest, InsertTest) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
-    db.start_transaction();
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    db.start_txn(DB_WRITE_TXN);
+    BTree::BTree<int, float, 3> tree(db);
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
     tree.insert(5,  3.0f);
@@ -26,8 +26,8 @@ TEST(BTreeTest, InsertTest) {
     EXPECT_TRUE(tree.search(5));
     EXPECT_TRUE(tree.search(6));
 
-    db.commit_transaction();
-    db.start_transaction();
+    db.commit_txn();
+    db.start_txn(DB_WRITE_TXN);
 
     tree.insert(12, 5.0f);
     tree.insert(30, 6.0f);
@@ -45,7 +45,7 @@ TEST(BTreeTest, InsertTest) {
 
     tree.print();
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -57,19 +57,19 @@ TEST(BTreeTest, Transactions) {
     constexpr int num_transactions = 1000;
     BTree::BTree<int, float, 3> trees[num_transactions];
 
-    db.start_transaction();
-    trees[0] = BTree::BTree<int, float, 3>(db.alloc);
-    db.commit_transaction();
+    db.start_txn(DB_WRITE_TXN);
+    trees[0] = BTree::BTree<int, float, 3>(db);
+    db.commit_txn();
 
     for (int i = 1; i < num_transactions; i++) {
-        db.start_transaction();
+        db.start_txn(DB_WRITE_TXN);
         trees[i] = trees[i-1].insert(i, .5f + i);
-        db.commit_transaction();
+        db.commit_txn();
     }
 
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
     trees[num_transactions-1].insert(num_transactions, 1337.0f);
-    db.commit_transaction();
+    db.commit_txn();
 
     for (int t = 0; t < num_transactions; t++) {
         EXPECT_EQ(trees[t].size(), t + 1);
@@ -82,9 +82,9 @@ TEST(BTreeTest, SequentialInsertTest) {
     remove("test.db");
 
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int num_keys = 500000;
     for (int i = 1; i <= num_keys; ++i) {
@@ -95,16 +95,16 @@ TEST(BTreeTest, SequentialInsertTest) {
         EXPECT_TRUE(tree.search(i));
     }
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RandomInsert) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int num_keys = 50;
     std::srand(std::time(nullptr));
@@ -121,16 +121,16 @@ TEST(BTreeTest, RandomInsert) {
         EXPECT_TRUE(tree.search(key));
     }
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, DuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int num_keys = 1'000'000;
     std::srand(std::time(nullptr));
@@ -157,16 +157,16 @@ TEST(BTreeTest, DuplicateTest) {
 
     EXPECT_FALSE(has_duplicate);
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     const int keys[] = {1, 2, 3, 3, 4};
     for (int key : keys) {
@@ -176,16 +176,16 @@ TEST(BTreeTest, ManualDuplicateTest) {
     tree.remove(3);
     EXPECT_FALSE(tree.search(3));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
 
 TEST(BTreeTest, RemoveTest) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
@@ -216,7 +216,7 @@ TEST(BTreeTest, RemoveTest) {
     EXPECT_TRUE(tree.search(30));
     EXPECT_TRUE(tree.search(17));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }
@@ -226,30 +226,30 @@ TEST(BTreeTest, RemoveTestCoW) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
     // First transaction: create initial tree with 3 elements
-    db.start_transaction();
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    db.start_txn(DB_WRITE_TXN);
+    BTree::BTree<int, float, 3> tree(db);
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
     tree.insert(5,  3.0f);
     auto tree_copy1 = tree;  // Save reference to this version
-    db.commit_transaction();
+    db.commit_txn();
 
     // Second transaction: add 3 more elements
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
     tree.insert(6,  4.0f);
     tree.insert(12, 5.0f);
     tree.insert(30, 6.0f);
     auto tree_copy2 = tree;  // Save reference to this version
-    db.commit_transaction();
+    db.commit_txn();
 
     // Third transaction: add 2 more and remove 3
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
     tree.insert(7,  7.0f);
     tree.insert(17, 8.0f);
     tree.remove(6);
     tree.remove(7);
     tree.remove(12);
-    db.commit_transaction();
+    db.commit_txn();
 
     // Verify each version retained its correct state
     // tree_copy1 should have the state from first transaction
@@ -283,9 +283,9 @@ TEST(BTreeTest, RemoveTestCoW) {
 
 TEST(BTreeTest, SequentialInsertRemove) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     constexpr int num_keys = 1000000;
     for (int i = num_keys; i >= num_keys; --i) {
@@ -355,9 +355,9 @@ TEST(BTreeTest, SequentialInsertRemove) {
 
 TEST(BTreeTest, RootNodeDelete) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_transaction();
+    db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree(db.alloc);
+    BTree::BTree<int, float, 3> tree(db);
 
     // Insertion order
     std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
@@ -392,7 +392,7 @@ TEST(BTreeTest, RootNodeDelete) {
     tree.print();
     EXPECT_FALSE(tree.search(21));
 
-    db.commit_transaction();
+    db.commit_txn();
 
     remove("test.db");
 }

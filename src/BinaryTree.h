@@ -2,8 +2,7 @@
 #define BINARYTREE_H
 
 #include <concepts>
-#include <functional>
-#include "Allocator.h"
+#include "FFDB2.h"
 
 namespace BinaryTree {
 
@@ -26,25 +25,25 @@ public:
     Ref<Node> right;
     size_t txn_id;
 
-    Node(const K& k, const V& v, size_t txn)
-        : key(k), value(v), left(Ref<Node>::null()), right(Ref<Node>::null()), txn_id(txn) {}
+    Node(const K& k, const V& v, Id txn_id)
+        : key(k), value(v), left(Ref<Node>::null()), right(Ref<Node>::null()), txn_id(txn_id) {}
 };
 
 template <Comparable K, typename V>
 class BinaryTree {
     Ref<Node<K, V>> root;
-    Allocator* allocator;
+    FFDB& db;
     int _size;
 
     Ref<Node<K, V>> copy_node(Ref<Node<K, V>> node) {
-        Ref<Node<K, V>> n = allocator->malloc<Node<K, V>>();
+        Ref<Node<K, V>> n = db.malloc<Node<K, V>>();
         *n = *node;
-        n->txn_id = allocator->get_txn_id();
+        n->txn_id = db.get_txn_id();
         return n;
     }
 
     void free_node(Ref<Node<K, V>> node) {
-        allocator->free(node);
+        db.free(node);
     }
 
     // void destroy(Ref<Node<K, V>> node) {
@@ -56,12 +55,12 @@ class BinaryTree {
 
     bool insert(Ref<Node<K, V>>& node, const K& key, const V& value) {
         if (!node) {
-            node = allocator->malloc<Node<K, V>>();
-            *node = Node<K, V>(key, value, allocator->get_txn_id());
+            node = db.malloc<Node<K, V>>();
+            *node = Node<K, V>(key, value, db.get_txn_id());
             ++_size;
             return true;
         }
-        if (allocator->get_txn_id() != node->txn_id) {
+        if (db.get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -75,7 +74,7 @@ class BinaryTree {
 
     bool update(Ref<Node<K, V>>& node, const K& key, const V& value) {
         if (!node) return false;
-        if (allocator->get_txn_id() != node->txn_id) {
+        if (db.get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -96,7 +95,7 @@ class BinaryTree {
 
     bool remove(Ref<Node<K, V>>& node, const K& key) {
         if (!node) return false;
-        if (allocator->get_txn_id() != node->txn_id) {
+        if (db.get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -135,8 +134,8 @@ class BinaryTree {
     }
 
 public:
-    explicit BinaryTree(Allocator* alloc)
-        : root(Ref<Node<K, V>>::null()), allocator(alloc), _size(0) {}
+    explicit BinaryTree(FFDB& db)
+        : root(Ref<Node<K, V>>::null()), db(db), _size(0) {}
 
     // ~BinaryTree() { destroy(root); }
 
