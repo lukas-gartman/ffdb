@@ -152,3 +152,51 @@ TEST(SBTTest, Update) {
 
     remove("test.db");
 }
+
+bool check_sbt_balance(const SBT::SBT<int, float> &tree) {
+    using Node = SBT::Node<int, float>;
+    std::function<bool(Ref<Node>)> check = [&](const Ref<Node> &node) -> bool {
+        if (!node) return true;
+        int lsize = node->left ? node->left->size : 0;
+        int rsize = node->right ? node->right->size : 0;
+
+        // SBT property: no child subtree is larger than its sibling by more than allowed (usually 1)
+        if (node->left && node->left->left && node->left->left->size > rsize)      return false;
+        if (node->left && node->left->right && node->left->right->size > rsize)    return false;
+        if (node->right && node->right->right && node->right->right->size > lsize) return false;
+        if (node->right && node->right->left && node->right->left->size > lsize)   return false;
+
+        return check(node->left) && check(node->right);
+    };
+
+    return check(tree.get_root());
+}
+
+TEST(SBTTest, SBTBalancedPrint) {
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    db.start_txn(DB_WRITE_TXN);
+    SBT::SBT<int, float> tree;
+
+    int num_keys = 100;
+    int keys[num_keys];
+    for (int i = 0; i < num_keys; ++i) {
+        keys[i] = i+1;
+    }
+
+    std::shuffle(keys, keys + num_keys, std::mt19937());
+
+    std::cout << "\nGenerated keys: ";
+    for (int key : keys) {
+        std::cout << key << " ";
+        tree.insert(key, float(key));
+    }
+
+    std::cout << "\nIn-order traversal: ";
+    tree.in_order([](const int k, float v) { std::cout << k << " "; });
+
+    EXPECT_TRUE(check_sbt_balance(tree));
+
+    db.commit_txn();
+    remove("test.db");
+}
