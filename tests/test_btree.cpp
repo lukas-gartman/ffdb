@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 TEST(BTreeTest, InsertTest) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
     db.start_txn(DB_WRITE_TXN);
@@ -99,6 +100,7 @@ TEST(BTreeTest, SequentialInsertTest) {
 }
 
 TEST(BTreeTest, RandomInsert) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
@@ -125,6 +127,7 @@ TEST(BTreeTest, RandomInsert) {
 }
 
 TEST(BTreeTest, DuplicateTest) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
     db.start_txn(DB_WRITE_TXN);
 
@@ -161,6 +164,7 @@ TEST(BTreeTest, DuplicateTest) {
 }
 
 TEST(BTreeTest, ManualDuplicateTest) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
@@ -180,6 +184,7 @@ TEST(BTreeTest, ManualDuplicateTest) {
 }
 
 TEST(BTreeTest, RemoveTest) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
@@ -280,6 +285,7 @@ TEST(BTreeTest, RemoveTestCoW) {
 }
 
 TEST(BTreeTest, SequentialInsertRemove) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
@@ -352,6 +358,7 @@ TEST(BTreeTest, SequentialInsertRemove) {
 // }
 
 TEST(BTreeTest, RootNodeDelete) {
+    remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
