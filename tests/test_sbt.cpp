@@ -1,14 +1,15 @@
 #include <gtest/gtest.h>
-#include "../src/BinaryTree.h"
+#include "../src/SBT.h"
 #include "../src/FFDB2.h"
-#include <vector>
-#include <set>
-#include <fcntl.h>
 
-TEST(BinaryTreeTest, InsertAndSearch) {
+#include <algorithm>
+#include <fcntl.h>
+#include <random>
+
+TEST(SBTTest, InsertAndSearch) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree;
+    SBT::SBT<int, float> tree;
 
     EXPECT_TRUE(tree.insert(10, 1.0f));
     EXPECT_TRUE(tree.insert(20, 2.0f));
@@ -28,10 +29,10 @@ TEST(BinaryTreeTest, InsertAndSearch) {
     remove("test.db");
 }
 
-TEST(BinaryTreeTest, Remove) {
+TEST(SBTTest, Remove) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree;
+    SBT::SBT<int, float> tree;
 
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
@@ -48,10 +49,10 @@ TEST(BinaryTreeTest, Remove) {
     remove("test.db");
 }
 
-TEST(BinaryTreeTest, InOrderTraversal) {
+TEST(SBTTest, InOrderTraversal) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree;
+    SBT::SBT<int, float> tree;
 
     std::vector<int> keys = {10, 5, 20, 15, 25};
     for (int k : keys) tree.insert(k, k + 0.5f);
@@ -66,12 +67,12 @@ TEST(BinaryTreeTest, InOrderTraversal) {
     remove("test.db");
 }
 
-TEST(BinaryTreeTest, CopyOnWrite) {
+TEST(SBTTest, CopyOnWrite) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
     // create initial tree
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree;
+    SBT::SBT<int, float> tree;
     tree.insert(1, 1.0f);
     tree.insert(2, 2.0f);
     tree.insert(3, 3.0f);
@@ -120,10 +121,10 @@ TEST(BinaryTreeTest, CopyOnWrite) {
     remove("test.db");
 }
 
-TEST(BinaryTreeTest, Update) {
+TEST(SBTTest, Update) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree;
+    SBT::SBT<int, float> tree;
 
     // Insert initial values
     tree.insert(10, 1.0f);

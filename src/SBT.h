@@ -1,10 +1,10 @@
-#ifndef BINARYTREE_H
-#define BINARYTREE_H
+#ifndef SBT_H
+#define SBT_H
 
 #include <concepts>
 #include "FFDB2.h"
 
-namespace BinaryTree {
+namespace SBT {
 
 template <typename T>
 concept Comparable = requires(T a, T b) {
@@ -218,4 +218,4 @@ public:
 
 }
 
-#endif //BINARYTREE_H
+#endif //SBT_H
