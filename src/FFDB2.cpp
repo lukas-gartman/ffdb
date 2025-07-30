@@ -520,6 +520,7 @@ void FFDB::start_txn(DBMode mode) {
     lock();
 
     current_base = base;
+    current_db = this;
 
     if (db_mode == DB_WRITE_TXN) {
         if (mprotect(base, mmap_size, PROT_READ | PROT_WRITE) == -1)
@@ -552,6 +553,8 @@ void FFDB::rollback_txn() {
     }
 
     // shared_state->writer_pid = 0;
+
+    current_db = nullptr;
 
     unlock();
     db_mode = DB_NO_TXN;
@@ -598,6 +601,7 @@ void FFDB::commit_txn()  {
     }
 
     // state->writer_pid = 0;
+    current_db = nullptr;
 
     unlock();
     db_mode = DB_NO_TXN;

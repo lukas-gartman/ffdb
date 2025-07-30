@@ -32,18 +32,17 @@ public:
 template <Comparable K, typename V>
 class BinaryTree {
     Ref<Node<K, V>> root;
-    FFDB& db;
     int _size;
 
     Ref<Node<K, V>> copy_node(Ref<Node<K, V>> node) {
-        Ref<Node<K, V>> n = db.malloc<Node<K, V>>();
+        Ref<Node<K, V>> n = current_db->malloc<Node<K, V>>();
         *n = *node;
-        n->txn_id = db.get_txn_id();
+        n->txn_id = current_db->get_txn_id();
         return n;
     }
 
     void free_node(Ref<Node<K, V>> node) {
-        db.free(node);
+        current_db->free(node);
     }
 
     // void destroy(Ref<Node<K, V>> node) {
@@ -55,12 +54,12 @@ class BinaryTree {
 
     bool insert(Ref<Node<K, V>>& node, const K& key, const V& value) {
         if (!node) {
-            node = db.malloc<Node<K, V>>();
-            *node = Node<K, V>(key, value, db.get_txn_id());
+            node = current_db->malloc<Node<K, V>>();
+            *node = Node<K, V>(key, value, current_db->get_txn_id());
             ++_size;
             return true;
         }
-        if (db.get_txn_id() != node->txn_id) {
+        if (current_db->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -74,7 +73,7 @@ class BinaryTree {
 
     bool update(Ref<Node<K, V>>& node, const K& key, const V& value) {
         if (!node) return false;
-        if (db.get_txn_id() != node->txn_id) {
+        if (current_db->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -95,7 +94,7 @@ class BinaryTree {
 
     bool remove(Ref<Node<K, V>>& node, const K& key) {
         if (!node) return false;
-        if (db.get_txn_id() != node->txn_id) {
+        if (current_db->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -134,8 +133,8 @@ class BinaryTree {
     }
 
 public:
-    explicit BinaryTree(FFDB& db)
-        : root(Ref<Node<K, V>>::null()), db(db), _size(0) {}
+    explicit BinaryTree()
+        : root(Ref<Node<K, V>>::null()), _size(0) {}
 
     // ~BinaryTree() { destroy(root); }
 

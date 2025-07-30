@@ -4,8 +4,10 @@
 #include <cstddef>
 #include <unistd.h>
 
-extern __thread unsigned char *current_base __attribute__((tls_model(
-    "initial-exec")));
+class FFDB;
+
+extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
+extern __thread FFDB *current_db __attribute__((tls_model("initial-exec")));
 
 typedef uintptr_t Offset;
 typedef size_t Size;

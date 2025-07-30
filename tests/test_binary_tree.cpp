@@ -8,7 +8,7 @@
 TEST(BinaryTreeTest, InsertAndSearch) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree(db);
+    BinaryTree::BinaryTree<int, float> tree;
 
     EXPECT_TRUE(tree.insert(10, 1.0f));
     EXPECT_TRUE(tree.insert(20, 2.0f));
@@ -31,7 +31,7 @@ TEST(BinaryTreeTest, InsertAndSearch) {
 TEST(BinaryTreeTest, Remove) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree(db);
+    BinaryTree::BinaryTree<int, float> tree;
 
     tree.insert(10, 1.0f);
     tree.insert(20, 2.0f);
@@ -51,7 +51,7 @@ TEST(BinaryTreeTest, Remove) {
 TEST(BinaryTreeTest, InOrderTraversal) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree(db);
+    BinaryTree::BinaryTree<int, float> tree;
 
     std::vector<int> keys = {10, 5, 20, 15, 25};
     for (int k : keys) tree.insert(k, k + 0.5f);
@@ -71,7 +71,7 @@ TEST(BinaryTreeTest, CopyOnWrite) {
 
     // create initial tree
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree(db);
+    BinaryTree::BinaryTree<int, float> tree;
     tree.insert(1, 1.0f);
     tree.insert(2, 2.0f);
     tree.insert(3, 3.0f);
@@ -123,7 +123,7 @@ TEST(BinaryTreeTest, CopyOnWrite) {
 TEST(BinaryTreeTest, Update) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
-    BinaryTree::BinaryTree<int, float> tree(db);
+    BinaryTree::BinaryTree<int, float> tree;
 
     // Insert initial values
     tree.insert(10, 1.0f);
