@@ -19,7 +19,7 @@ else()
             src/Typedefs.cpp
             src/Typedefs.h
             src/Synch.h
-            tests/test_binary_tree.cpp
+            tests/test_sbt.cpp
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
@@ -31,5 +31,5 @@ add_executable(ffdb src/main.cpp
         src/Typedefs.h
         src/BTree.h
         src/Synch.h
-        src/BinaryTree.h
+        src/SBT.h
 )
