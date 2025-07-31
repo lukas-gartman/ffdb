@@ -102,6 +102,7 @@ private:
      */
     Ref<Node<K, V, t>> create_node(bool is_leaf) {
         Ref<Node<K, V, t>> node = current_db->malloc<Node<K, V, t>>();
+        new (&*node) Node<K, V, t>();
         node->is_leaf = is_leaf;
         node->txn_id = current_db->get_txn_id();
         node->n = 0;
@@ -203,7 +204,7 @@ private:
      */
     Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
         Ref<Node<K, V, t>> x = current_db->malloc<Node<K, V, t>>();
-        *x = *node;
+        new (&*x) Node<K, V, t>(*node);
         x->txn_id = current_db->get_txn_id();
         return x;
     }

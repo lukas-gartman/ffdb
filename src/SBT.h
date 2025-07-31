@@ -37,7 +37,7 @@ class SBT {
 
     Ref<Node<K, V>> copy_node(Ref<Node<K, V>> node) {
         Ref<Node<K, V>> n = current_db->malloc<Node<K, V>>();
-        *n = *node;
+        new (&*n) Node<K, V>(*node);
         n->txn_id = current_db->get_txn_id();
         return n;
     }
@@ -108,7 +108,7 @@ class SBT {
     bool insert(Ref<Node<K, V>> &node, const K &key, const V &value) {
         if (!node) {
             node = current_db->malloc<Node<K, V>>();
-            *node = Node<K, V>(key, value, current_db->get_txn_id());
+            new (&*node) Node<K, V>(key, value, current_db->get_txn_id());
             ++_size;
             return true;
         }
