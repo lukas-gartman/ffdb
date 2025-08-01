@@ -32,4 +32,5 @@ add_executable(ffdb src/main.cpp
         src/BTree.h
         src/Synch.h
         src/SBT.h
+        src/FFDBKey.h
 )
