@@ -175,7 +175,6 @@ class SBT {
             }
         }
         if (node) update_size(node);
-        if (node) maintain(node, false);
         return res;
     }
 
