@@ -3,11 +3,18 @@
 #include <cstdint>
 #include <cstddef>
 #include <unistd.h>
+#include <stdexcept>
 
 class FFDB;
 
 extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
-extern __thread FFDB *current_db __attribute__((tls_model("initial-exec")));
+extern __thread FFDB *_current_db __attribute__((tls_model("initial-exec")));
+inline FFDB *current_db() {
+    if (!_current_db) {
+        throw std::runtime_error("FFDB: the database is not initialized. Did you forget to create an FFDB instance and start a transaction?");
+    }
+    return _current_db;
+}
 
 typedef uintptr_t Offset;
 typedef size_t Size;

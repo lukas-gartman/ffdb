@@ -101,10 +101,10 @@ private:
      * \return A Ref to the newly created node.
      */
     Ref<Node<K, V, t>> create_node(bool is_leaf) {
-        Ref<Node<K, V, t>> node = current_db->malloc<Node<K, V, t>>();
+        Ref<Node<K, V, t>> node = current_db()->malloc<Node<K, V, t>>();
         new (&*node) Node<K, V, t>();
         node->is_leaf = is_leaf;
-        node->txn_id = current_db->get_txn_id();
+        node->txn_id = current_db()->get_txn_id();
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
             node->key_values[i].key = K();
@@ -122,7 +122,7 @@ private:
      * \param node The Ref to the node to be freed.
      */
     void free_node(Ref<Node<K, V, t>> node) {
-        current_db->free(node);
+        current_db()->free(node);
     }
 
     /**
@@ -203,9 +203,9 @@ private:
      * \return A Ref to the newly created copy of the node.
      */
     Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
-        Ref<Node<K, V, t>> x = current_db->malloc<Node<K, V, t>>();
+        Ref<Node<K, V, t>> x = current_db()->malloc<Node<K, V, t>>();
         new (&*x) Node<K, V, t>(*node);
-        x->txn_id = current_db->get_txn_id();
+        x->txn_id = current_db()->get_txn_id();
         return x;
     }
 
@@ -250,7 +250,7 @@ private:
             ++i; // Increment i to find the child
 
             // Copy-on-write
-            if (current_db->get_txn_id() != x->children[i]->txn_id) {
+            if (current_db()->get_txn_id() != x->children[i]->txn_id) {
                 x->children[i] = copy_node(x->children[i]);
             }
 
@@ -473,10 +473,10 @@ private:
         KeyValue<K, V> key_value = parent->key_values[i];
 
         // Copy-on-write for both children
-        if (current_db->get_txn_id() != parent->children[i]->txn_id) {
+        if (current_db()->get_txn_id() != parent->children[i]->txn_id) {
             parent->children[i] = copy_node(parent->children[i]);
         }
-        if (current_db->get_txn_id() != parent->children[i + 1]->txn_id) {
+        if (current_db()->get_txn_id() != parent->children[i + 1]->txn_id) {
             parent->children[i + 1] = copy_node(parent->children[i + 1]);
         }
         Ref<Node<K, V, t>> left_child = parent->children[i];
@@ -551,7 +551,7 @@ private:
             if (node->is_leaf) { return false; } // Key not found
 
             // Copy-on-write for the child node
-            if (current_db->get_txn_id() != node->children[i]->txn_id) {
+            if (current_db()->get_txn_id() != node->children[i]->txn_id) {
                 node->children[i] = copy_node(node->children[i]);
             }
             child = node->children[i];
@@ -707,12 +707,12 @@ public:
             Ref<Node<K, V, t>> old_root = root;
 
             // Copy-on-write
-            if (current_db->get_txn_id() != root->txn_id) {
+            if (current_db()->get_txn_id() != root->txn_id) {
                 root = copy_node(root);
             }
 
             bool inserted = insert_non_full(root, key, value);
-            if (!inserted && root->txn_id == current_db->get_txn_id()) {
+            if (!inserted && root->txn_id == current_db()->get_txn_id()) {
                 free_node(root);
                 root = copy_node(old_root);
             }
@@ -735,7 +735,7 @@ public:
         Ref<Node<K, V, t>> old_root = root;
 
         // Copy-on-write
-        if (current_db->get_txn_id() != root->txn_id) {
+        if (current_db()->get_txn_id() != root->txn_id) {
             root = copy_node(root);
         }
 
@@ -747,7 +747,7 @@ public:
             root = root->is_leaf ? REF_NULL : root->children[0];
 
             // If root changed to a child, we need to ensure copy-on-write for it too
-            if (root != REF_NULL && current_db->get_txn_id() != root->txn_id) {
+            if (root != REF_NULL && current_db()->get_txn_id() != root->txn_id) {
                 root = copy_node(root);
             }
 
@@ -755,7 +755,7 @@ public:
         }
 
         // If no actual removal happened and we copied the root, restore the old root
-        if (!removed && root->txn_id == current_db->get_txn_id()) {
+        if (!removed && root->txn_id == current_db()->get_txn_id()) {
             free_node(root);
             root = old_root;
         }
@@ -785,7 +785,7 @@ public:
         }
 
         // Copy-on-write
-        if (current_db->get_txn_id() != node->txn_id) {
+        if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
 

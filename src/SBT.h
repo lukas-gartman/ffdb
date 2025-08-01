@@ -36,14 +36,14 @@ class SBT {
     int _size;
 
     Ref<Node<K, V>> copy_node(Ref<Node<K, V>> node) {
-        Ref<Node<K, V>> n = current_db->malloc<Node<K, V>>();
+        Ref<Node<K, V>> n = current_db()->malloc<Node<K, V>>();
         new (&*n) Node<K, V>(*node);
-        n->txn_id = current_db->get_txn_id();
+        n->txn_id = current_db()->get_txn_id();
         return n;
     }
 
     void free_node(Ref<Node<K, V>> node) {
-        current_db->free(node);
+        current_db()->free(node);
     }
 
     // void destroy(Ref<Node<K, V>> node) {
@@ -107,12 +107,12 @@ class SBT {
 
     bool insert(Ref<Node<K, V>> &node, const K &key, const V &value) {
         if (!node) {
-            node = current_db->malloc<Node<K, V>>();
-            new (&*node) Node<K, V>(key, value, current_db->get_txn_id());
+            node = current_db()->malloc<Node<K, V>>();
+            new (&*node) Node<K, V>(key, value, current_db()->get_txn_id());
             ++_size;
             return true;
         }
-        if (current_db->get_txn_id() != node->txn_id) {
+        if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         bool res;
@@ -130,7 +130,7 @@ class SBT {
 
     bool update(Ref<Node<K, V>> &node, const K &key, const V &value) {
         if (!node) return false;
-        if (current_db->get_txn_id() != node->txn_id) {
+        if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         if (key < node->key) {
@@ -151,7 +151,7 @@ class SBT {
 
     bool remove(Ref<Node<K, V>> &node, const K &key) {
         if (!node) return false;
-        if (current_db->get_txn_id() != node->txn_id) {
+        if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
         bool res;
