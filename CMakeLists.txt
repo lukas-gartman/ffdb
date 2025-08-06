@@ -36,6 +36,8 @@ endif()
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/googlebenchmark/CMakeLists.txt")
     message(WARNING "GoogleBenchmark submodule is missing! Run:\ngit submodule update --init --recursive external/googlebenchmark")
 else()
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "Disable Google Benchmark's own tests")
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable Google Benchmark's own tests")
     add_subdirectory(external/googlebenchmark)
 
     add_executable(ffdb_benchmarks
