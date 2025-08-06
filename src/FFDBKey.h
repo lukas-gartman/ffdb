@@ -108,6 +108,21 @@ public:
     bool operator> (const FFDBKey &other) const { return other < *this; }
     bool operator<=(const FFDBKey &other) const { return !(*this > other); }
     bool operator>=(const FFDBKey &other) const { return !(*this < other); }
+
+    friend std::ostream &operator<<(std::ostream &os, const FFDBKey<T> &key) {
+        if (std::holds_alternative<T>(key.key_storage)) {
+            os << std::get<T>(key.key_storage);
+        } else {
+            const auto& lk = std::get<typename FFDBKey<T>::LargeKey>(key.key_storage);
+            os << "[";
+            const std::byte* data = reinterpret_cast<const std::byte*>(static_cast<const void*>(lk.key_ref));
+            for (size_t i = 0; i < lk.size; ++i) {
+                os << std::hex << std::to_integer<int>(data[i]) << " ";
+            }
+            os << "]";
+        }
+        return os;
+    }
 };
 
 #endif //FFDBKEY_H
