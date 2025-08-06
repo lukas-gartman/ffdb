@@ -8,22 +8,6 @@
 #include "FFDB2.h"
 #include "Typedefs.h"
 
-/**
- * \brief Ensures that the key type is comparable to other keys.
- * \details This concept checks that the type `T` supports comparison operators
- *          such as `<`, `<=`, `>`, `>=`, `==`, and `!=`, all of which must return
- *          a value convertible to `bool`.
- */
-template <typename T>
-concept Comparable = requires(T a, T b) {
-    { a < b }  -> std::convertible_to<bool>;
-    { a <= b } -> std::convertible_to<bool>;
-    { a > b }  -> std::convertible_to<bool>;
-    { a >= b } -> std::convertible_to<bool>;
-    { a == b } -> std::convertible_to<bool>;
-    { a != b } -> std::convertible_to<bool>;
-};
-
 const size_t PREFIX_SIZE = 8;
 
 template <Comparable T>
