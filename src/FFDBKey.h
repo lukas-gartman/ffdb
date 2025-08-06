@@ -76,6 +76,8 @@ public:
         }
     }
 
+    FFDBKey(const char *key) : FFDBKey(key, std::strlen(key)) {}
+
     bool operator==(const FFDBKey &other) const {
         if (key_storage.index() != other.key_storage.index())
             return false;
