@@ -38,4 +38,4 @@ build
 docs
 db-engine
 
-docs
+.vscode
