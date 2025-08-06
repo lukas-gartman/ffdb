@@ -20,6 +20,7 @@ else()
             src/Typedefs.h
             src/Synch.h
             tests/test_sbt.cpp
+            tests/test_ffdb_key.cpp
     )
     target_link_libraries(ffdb_tests gtest gtest_main)
 endif()
