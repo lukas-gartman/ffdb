@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <cmath>
+#include <map>
+#include <map>
 
 /** \brief Align `bytes` depending on amount.
  *
@@ -63,14 +65,14 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("No transaction started");
 
-    Offset obj;
+    Offset offset;
 
     // Check if there is a free block cached that can be used.
     if (writer_state.lf_block.obj != 0 &&
         writer_state.lf_block.size >= bytes &&
         writer_state.lf_block.txn_id < shared_state->min_txn_id) {
 
-        obj = writer_state.lf_block.obj;
+        offset = writer_state.lf_block.obj;
         writer_state.lf_block.obj += bytes;
         writer_state.lf_block.size -= bytes;
 
@@ -79,21 +81,34 @@ Offset FFDB::malloc_internal(Size bytes) {
             writer_state.lf_block.txn_id = 0;
         }
 
-        return obj;
+        return offset;
     }
 
     // Try finding a fitting block in the block descriptor list.
-    obj = delete_block_descr(bytes);
-    if (obj != 0) return obj;
+    auto [new_tree, found_block] = del_bd_tree(writer_state.free_blocks, bytes);
+    writer_state.free_blocks = new_tree;
+    offset = found_block.obj;
+    if (offset != 0) {
+        if (found_block.size > bytes) {
+            if (writer_state.lf_block.obj != 0) {
+                writer_state.free_blocks = ins_bd_tree(
+                    writer_state.free_blocks,
+                    writer_state.lf_block
+                );
+            }
+            writer_state.lf_block = {offset + bytes, found_block.size - bytes, found_block.txn_id};
+        }
+        return offset;
+    }
 
     // The above failed. Get memory from the top.
     if (bytes > mmap_size - writer_state.top)
         resize_map(bytes);
 
-    obj = writer_state.top;
+    offset = writer_state.top;
     writer_state.top += bytes;
 
-    return obj;
+    return offset;
 }
 
 void FFDB::free_internal(Offset obj, Size bytes) {
@@ -128,14 +143,16 @@ void FFDB::free_internal(Offset obj, Size bytes) {
             writer_state.lf_block.txn_id == txn_id) {
 
             writer_state.lf_block.size += bytes;
-            if (lf_block_is_after)
-                writer_state.lf_block.obj = obj;
+            if (lf_block_is_after) writer_state.lf_block.obj = obj;
 
             return;
         }
 
         // Otherwise, it will get replaced.
-        insert_block_descr(writer_state.lf_block);
+        std::cout << "Replacing lf_block: "
+                  << writer_state.lf_block.obj << " + " << writer_state.lf_block.size
+                  << " with " << obj << " + " << bytes << std::endl;
+        writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, writer_state.lf_block);
     }
 
     // 0 as an id here means that the last free block is located beyond
@@ -146,7 +163,7 @@ void FFDB::free_internal(Offset obj, Size bytes) {
     writer_state.lf_block = {obj, bytes, txn_id};
 }
 
-Ref<BlockDescr> FFDB::new_block_descr(Block block) {
+Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<BlockDescr> right) {
     Ref<BlockDescr> descr = 0;
 
     if (writer_state.unused_descrs != 0) {
@@ -164,150 +181,245 @@ Ref<BlockDescr> FFDB::new_block_descr(Block block) {
         writer_state.top += bytes;
     }
 
-    *descr = {block, 0, 0, shared_state->curr_txn_id};
+    Size tree_size = 1 + get_size(left) + get_size(right);
+
+    *descr = {
+        block,
+        tree_size,
+        left,
+        right,
+        0,
+        shared_state->curr_txn_id
+    };
 
     return descr;
 }
 
-Ref<BlockDescr> FFDB::upd_block_descr(Ref<BlockDescr> descr) {
+Ref<BlockDescr> FFDB::upd_bd_tree_node(Ref<BlockDescr> tree, Ref<BlockDescr> left, Ref<BlockDescr> right) {
     // If the descr is not from a previous transaction, there is no need
     // to do copy-on-write.
-    if (descr->txn_id == shared_state->curr_txn_id) return descr;
+    if (tree->txn_id == shared_state->curr_txn_id) {
+        tree->tree_size = 1 + get_size(left) + get_size(right);
+        tree->tree_left = left;
+        tree->tree_right = right;
+        return tree;
+    }
 
     // Add the old descriptor to the pending unused list. In case of
     // a rollback, this descriptor will still have its old position in
     // the free list from before the start of the current_transaction.
-    descr->next_unused = writer_state.pending_unused_descrs;
-    writer_state.pending_unused_descrs = descr;
+    tree->next_unused = writer_state.pending_unused_descrs;
+    writer_state.pending_unused_descrs = tree;
     if (writer_state.pending_unused_last == 0)
-        writer_state.pending_unused_last = descr;
+        writer_state.pending_unused_last = tree;
 
-    Ref<BlockDescr> new_descr = new_block_descr(descr->block);
-    new_descr->next_free = descr->next_free;
-    new_descr->txn_id = shared_state->curr_txn_id;
+    Ref<BlockDescr> new_node = new_block_descr(tree->block, left, right);
 
-    return new_descr;
+    return new_node;
 }
 
-void FFDB::insert_block_descr(Block block) {
-    const Ref<BlockDescr> descr = new_block_descr(block);
+Ref<BlockDescr> FFDB::ins_bd_tree(Ref<BlockDescr> tree, Block block) {
+    if (tree == 0) return new_block_descr(block);
 
-    Ref<BlockDescr> prev_descr = 0;
-    Ref<BlockDescr> curr_descr = writer_state.free_blocks;
+    bool traverse_left =
+        block.size != tree->block.size ? block.size < tree->block.size :
+        block.txn_id != tree->block.txn_id ? block.txn_id < tree->block.txn_id :
+        tree->tree_left->tree_size < tree->tree_right->tree_size;
 
-    // Block descr is sorted by size first and then transaction id.
-    while (curr_descr != 0) {
-        const bool found =
-            (descr->block.size < curr_descr->block.size) ||
-            (descr->block.size == curr_descr->block.size &&
-            descr->block.txn_id <= curr_descr->block.txn_id);
-
-        // If we found a position to place our block descr in,
-        // we will not need to CoW the current_descr.
-        if (found) {
-            descr->next_free = curr_descr;
-
-            if (prev_descr != 0)
-                prev_descr->next_free = descr;
-            else
-                writer_state.free_blocks = descr; // Insert at the head
-
-            return;
-        }
-
-        // CoW this bad boy
-        curr_descr = upd_block_descr(curr_descr);
-
-        if (prev_descr == 0)
-            writer_state.free_blocks = curr_descr;
-        else
-            prev_descr->next_free = curr_descr;
-
-        prev_descr = curr_descr;
-        curr_descr = curr_descr->next_free;
-    }
-
-    descr->next_free = 0;
-    if (prev_descr != 0)
-        prev_descr->next_free = descr;
-    else
-        writer_state.free_blocks = descr; // Insert as the only element
-}
-
-Offset FFDB::delete_block_descr(const Size block_size) {
-    if (writer_state.free_blocks == 0)
-        return 0;
-
-    Ref<BlockDescr> curr_descr = writer_state.free_blocks;
-
-    // Find the best fitting block.
-    while (curr_descr != 0) {
-        const bool found =
-            curr_descr->block.size >= block_size &&
-            curr_descr->block.txn_id < shared_state->min_txn_id;
-
-        if (found) break;
-
-        curr_descr = curr_descr->next_free;
-    }
-
-    const Ref<BlockDescr> best_fit = curr_descr;
-
-    // Found no fit at all.
-    if (best_fit == 0) return 0;
-
-    // If a fitting block was found, we need to CoW the path leading to it.
-    Ref<BlockDescr> prev_descr = 0;
-    curr_descr = writer_state.free_blocks;
-
-    while (curr_descr != best_fit) {
-        curr_descr = upd_block_descr(curr_descr);
-
-        if (prev_descr == 0)
-            writer_state.free_blocks = curr_descr;
-        else
-            prev_descr->next_free = curr_descr;
-
-        prev_descr = curr_descr;
-        curr_descr = curr_descr->next_free;
-    }
-
-    // Remove the block descriptor from the free list.
-    if (prev_descr != 0) prev_descr->next_free = curr_descr->next_free;
-    else writer_state.free_blocks = curr_descr->next_free;
-
-    // If the block was allocated this transaction, it is added to the
-    // unused list. Otherwise it is added to the pending unused list.
-    if (curr_descr->txn_id == shared_state->curr_txn_id) {
-        curr_descr->next_unused = writer_state.unused_descrs;
-        writer_state.unused_descrs = curr_descr;
+    if (traverse_left) {
+        tree = upd_bd_tree_node(
+            tree,
+            ins_bd_tree(tree->tree_left, block),
+            tree->tree_right
+        );
+        tree = balancel_bd_tree(tree);
     }
     else {
-        curr_descr->next_unused = writer_state.pending_unused_descrs;
-        writer_state.pending_unused_descrs = curr_descr;
-
-        if (writer_state.pending_unused_last == 0)
-            writer_state.pending_unused_last = curr_descr;
+        tree = upd_bd_tree_node(
+            tree,
+            tree->tree_left,
+            ins_bd_tree(tree->tree_right, block)
+        );
+        tree = balancer_bd_tree(tree);
     }
 
-    // Block offset to return
-    Offset offset = curr_descr->block.obj;
+    validate_tree(tree);
 
-    auto found_block = curr_descr->block;
-
-    found_block.obj += block_size;
-    found_block.size -= block_size;
-
-    // If the block that best_fit pointed to is not empty it becomes the
-    // new last freed block
-    if (found_block.size != 0) {
-        if (writer_state.lf_block.obj != 0)
-            insert_block_descr(writer_state.lf_block);
-        writer_state.lf_block = found_block;
-    }
-
-    return offset;
+    return tree;
 }
+
+std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size block_size) {
+    if (tree == 0) return std::make_pair(0, Block{0, 0, 0});
+
+    // We traverse left if block_size fits but are too large or block size is a perfect fit but the block belongs
+    // to a revision that is still in use.
+    bool traverse_left =
+            block_size != tree->block.size ? block_size < tree->block.size :
+            shared_state->min_txn_id < tree->block.txn_id;
+
+    // If the block is a perfect fit and belongs to a revision that is not in use, we can use it and don't need to
+    // search further.
+    bool found =
+        (block_size == tree->block.size &&
+            shared_state->min_txn_id >= tree->block.txn_id);
+
+    if (!traverse_left && !found) {
+        // No need to fit block in this case as if it needs to be done, the if statement above will be called in some
+        // recursive call and hence fit will be carried out anyways.
+        auto [new_tree_right, found_block] =
+            del_bd_tree(tree->tree_right, block_size);
+
+        if (found_block.obj != 0) {
+            tree = upd_bd_tree_node(tree, tree->tree_left, new_tree_right);
+            tree = balancel_bd_tree(tree);
+        }
+
+        return std::make_pair(tree, found_block);
+    }
+
+    if (traverse_left && !found) {
+        auto [new_tree_left, found_block] =
+            del_bd_tree(tree->tree_left, block_size);
+
+        // We have found a fitting block. Return.
+        if (found_block.obj != 0) {
+            tree = balancer_bd_tree(upd_bd_tree_node(tree, new_tree_left, tree->tree_right));
+            return std::make_pair(tree, found_block);
+        }
+
+        // No perfect fit found in the left subtree and all larger blocks are in use.
+        if (tree->block.txn_id >= shared_state->min_txn_id)
+            return std::make_pair(tree, Block{0, 0, 0});
+
+        // We have not found a perfect fit in the left subtree, but we can use the
+        // current block.
+    }
+
+    auto bd_to_delete = tree;
+
+    // Found a fit, remove the current descriptor and replace it with a fitting one.
+    if (tree->tree_left == 0)
+        tree = tree->tree_right;
+    else if (tree->tree_right == 0)
+        tree = tree->tree_left;
+    else {
+        if (tree->tree_left->tree_size > tree->tree_right->tree_size) {
+            auto [new_tree, new_left] = pop_last_bd(tree->tree_left);
+            tree = balancer_bd_tree(upd_bd_tree_node(new_tree, new_left, tree->tree_right));
+        }
+        else {
+            auto [new_tree, new_right] = pop_last_bd(tree->tree_right);
+            tree = balancel_bd_tree(upd_bd_tree_node(new_tree, tree->tree_left, new_right));
+        }
+    }
+
+    if (bd_to_delete->txn_id == shared_state->curr_txn_id) {
+        bd_to_delete->next_unused = writer_state.unused_descrs;
+        writer_state.unused_descrs = bd_to_delete;
+    }
+    else {
+        bd_to_delete->next_unused = writer_state.pending_unused_descrs;
+        writer_state.pending_unused_descrs = bd_to_delete;
+        if (writer_state.pending_unused_last == 0)
+            writer_state.pending_unused_last = bd_to_delete;
+    }
+
+    return std::make_pair(tree, bd_to_delete->block);
+}
+
+std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::pop_first_bd(Ref<BlockDescr> tree) {
+    if (tree == 0)
+        return std::make_pair(tree, 0);
+
+    if (tree->tree_left == 0)
+        return std::make_pair(tree->tree_right, tree);
+
+    auto [new_tree_left, bd_to_remove] =
+        pop_first_bd(tree->tree_left);
+
+    tree = balancer_bd_tree(upd_bd_tree_node(tree, new_tree_left, tree->tree_right));
+    return std::make_pair(tree, bd_to_remove);
+}
+
+std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::pop_last_bd(Ref<BlockDescr> tree) {
+    if (tree == 0)
+        return std::make_pair(tree, 0);
+
+    if (tree->tree_right == 0)
+        return std::make_pair(tree->tree_left, tree);
+
+    auto [new_tree_right, bd_to_remove] =
+        pop_last_bd(tree->tree_right);
+
+    tree = balancel_bd_tree(upd_bd_tree_node(tree, tree->tree_left, new_tree_right));
+    return std::make_pair(tree, bd_to_remove);
+}
+
+Ref<BlockDescr> FFDB::rotl_bd_tree_node(Ref<BlockDescr> tree) {
+    if (tree == 0) return tree;
+
+    auto right = tree->tree_right;
+    auto right_left = right ? right->tree_left : 0;
+    auto new_left = upd_bd_tree_node(tree, tree->tree_left, right_left);
+    return upd_bd_tree_node(right, new_left, right->tree_right);
+}
+
+Ref<BlockDescr> FFDB::rotr_bd_tree_node(Ref<BlockDescr> tree) {
+    if (tree == 0) return tree;
+
+    auto left = tree->tree_left;
+    auto left_right = left ? left->tree_right : 0;
+    auto new_right = upd_bd_tree_node(tree, left_right, tree->tree_right);
+    return upd_bd_tree_node(left, left->tree_left, new_right);
+}
+
+Ref<BlockDescr> FFDB::balancel_bd_tree(Ref<BlockDescr> tree) {
+    if (tree == 0) return 0;
+
+    auto right = tree->tree_right;
+    auto left = tree->tree_left;
+    auto [left_left, left_right] = get_children(left);
+
+    if (get_size(right) < get_size(left_right)) {
+        auto new_left = rotl_bd_tree_node(left);
+        tree = upd_bd_tree_node(tree, new_left, right);
+        return rotr_bd_tree_node(tree);
+    }
+    else if (get_size(right) < get_size(left_left)) {
+        return rotr_bd_tree_node(tree);
+    }
+
+    return tree;
+}
+
+Ref<BlockDescr> FFDB::balancer_bd_tree(Ref<BlockDescr> tree) {
+    if (tree == 0) return 0;
+
+    auto right = tree->tree_right;
+    auto left = tree->tree_left;
+    auto [right_left, right_right] = get_children(right);
+
+    if (get_size(left) < get_size(right_left)) {
+        auto new_right = rotr_bd_tree_node(right);
+        tree = upd_bd_tree_node(tree, left, new_right);
+        tree = rotl_bd_tree_node(tree);
+    }
+    else if (get_size(left) < get_size(right_right)) {
+        tree = rotl_bd_tree_node(tree);
+    }
+
+    return tree;
+}
+
+int FFDB::get_size(Ref<BlockDescr> node) {
+    return node ? node->tree_size : 0;
+}
+
+std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::get_children(Ref<BlockDescr> node) {
+    if (node == 0) return std::make_pair(0, 0);
+    return std::make_pair(node->tree_left, node->tree_right);
+}
+
 
 // TODO: Handle DB_NO_TXN
 void FFDB::lock() {

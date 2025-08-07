@@ -1,6 +1,8 @@
 #ifndef FFDB2_H
 #define FFDB2_H
 
+#include <cassert>
+
 #include "Typedefs.h"
 #include "Synch.h"
 
@@ -39,8 +41,9 @@ struct BlockDescr {
     /** \brief The memory block associated with this descriptor. */
     Block block;
 
-    /** \brief A reference to the next free block. */
-    Ref<BlockDescr> next_free;
+    Size tree_size;
+    Ref<BlockDescr> tree_left;
+    Ref<BlockDescr> tree_right;
 
     /** \brief A reference to the next unused block descriptor. */
     Ref<BlockDescr> next_unused;
@@ -131,10 +134,18 @@ private:
     Offset malloc_internal(Size bytes);
     void free_internal(Offset obj, Size bytes);
 
-    Ref<BlockDescr> new_block_descr(Block block);
-    Ref<BlockDescr> upd_block_descr(Ref<BlockDescr> descr);
-    void insert_block_descr(Block block);
-    Offset delete_block_descr(Size block_size);
+    Ref<BlockDescr> new_block_descr(Block block, Ref<BlockDescr> left = 0, Ref<BlockDescr> right = 0);
+    Ref<BlockDescr> upd_bd_tree_node(Ref<BlockDescr> tree, Ref<BlockDescr> left, Ref<BlockDescr> right);
+    Ref<BlockDescr> ins_bd_tree(Ref<BlockDescr> tree, Block block);
+    std::pair<Ref<BlockDescr>, Block> del_bd_tree(Ref<BlockDescr> tree, Size block_size);
+    std::pair<Ref<BlockDescr>, Ref<BlockDescr>> pop_first_bd(Ref<BlockDescr> tree);
+    std::pair<Ref<BlockDescr>, Ref<BlockDescr>> pop_last_bd(Ref<BlockDescr> tree);
+    Ref<BlockDescr> rotl_bd_tree_node(Ref<BlockDescr> tree);
+    Ref<BlockDescr> rotr_bd_tree_node(Ref<BlockDescr> tree);
+    Ref<BlockDescr> balancel_bd_tree(Ref<BlockDescr> tree);
+    Ref<BlockDescr> balancer_bd_tree(Ref<BlockDescr> tree);
+    int get_size(Ref<BlockDescr> node);
+    std::pair<Ref<BlockDescr>, Ref<BlockDescr>> get_children(Ref<BlockDescr> node);
 
     void lock();
     void unlock();
@@ -165,6 +176,43 @@ public:
 
     Id get_txn_id() const {
         return shared_state->curr_txn_id;
+    }
+
+    void validate_tree(Ref<BlockDescr> tree) {
+        if (!tree) return;
+
+        auto right = tree->tree_right;
+        auto left = tree->tree_left;
+        auto right_left = right ? right->tree_left : 0;
+        auto right_right = right ? right->tree_right : 0;
+        auto left_left = left ? left->tree_left : 0;
+        auto left_right = left ? left->tree_right : 0;
+
+        assert(get_size(left) >= get_size(right_left));
+        assert(get_size(left) >= get_size(right_right));
+        assert(get_size(right) >= get_size(left_left));
+        assert(get_size(right) >= get_size(left_right));
+    }
+
+    void print_tree() {
+        print_tree(writer_state.free_blocks, "n");
+    }
+
+    void print_tree(Ref<BlockDescr> tree, std::string path) {
+        if (tree == 0) {
+            std::cout << ">>" << path << std::endl;
+            std::cout << "null" << std::endl << std::endl;
+            return;
+        }
+
+        std::cout << ">>" << path << std::endl;
+        std::cout << "SIZE: " << tree->block.size << std::endl;
+        std::cout << "Node size: " << tree->tree_size << std::endl;
+        std::cout << "Descr txn id: " << tree->txn_id << std::endl;
+        std::cout << "Block: (" << tree->block.obj << ", " << tree->block.size << ", " <<tree->block.txn_id << ")" << std::endl << std::endl;
+
+        print_tree(tree->tree_left, path + string("l"));
+        print_tree(tree->tree_right, path + string("r"));
     }
 
     void dump_block_descrs() const;
