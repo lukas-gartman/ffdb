@@ -6,32 +6,18 @@
 
 #include <concepts>
 #include "FFDB2.h"
+#include "FFDBKey.h"
+#include "Typedefs.h"
 
 namespace BTree {
 
-/**
- * \brief Ensures that the key type is comparable to other keys.
- * \details This concept checks that the type `T` supports comparison operators
- *          such as `<`, `<=`, `>`, `>=`, `==`, and `!=`, all of which must return
- *          a value convertible to `bool`.
- */
-template <typename T>
-concept Comparable = requires(T a, T b) {
-    { a < b }  -> std::convertible_to<bool>;
-    { a <= b } -> std::convertible_to<bool>;
-    { a > b }  -> std::convertible_to<bool>;
-    { a >= b } -> std::convertible_to<bool>;
-    { a == b } -> std::convertible_to<bool>;
-    { a != b } -> std::convertible_to<bool>;
-};
-
-template <Comparable K, typename V, int t>
+template <Comparable T, typename V, int t>
 class BTree;
 
-template <Comparable K, typename V, int t>
+template <Comparable T, typename V, int t>
 class Node;
 
-#define REF_NULL Ref<Node<K, V, t>>::null()
+#define REF_NULL Ref<Node<T, V, t>>::null()
 
 /**
 * \struct KeyValue
@@ -39,12 +25,12 @@ class Node;
 * \details Stores a key of type `T` and a value of either type `V` or a reference to `V`.
 *          A `Ref` is used to store the value in an overflow page if the value does not fit within the node.
 *
-* \tparam K The type of the key. Must satisfy the Comparable concept.
+* \tparam T The type of the key. Must satisfy the Comparable concept.
 * \tparam V The type of the value. Can be a direct value or a `Ref` to the value.
 */
-template <Comparable K, typename V>
+template <Comparable T, typename V>
 struct KeyValue {
-    K key;
+    FFDBKey<T> key;
     std::variant<V, Ref<V>> value;
 };
 
@@ -54,7 +40,7 @@ struct KeyValue {
  * \details Each node contains an array of key-value pairs, an array of child node Refs,
  *          the number of keys, and whether the node is a leaf.
  *
- * \tparam K The type of keys stored in the node. Must satisfy the Comparable concept.
+ * \tparam T The type of keys stored in the node. Must satisfy the Comparable concept.
  * \tparam V The type of values stored in the node. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -62,24 +48,24 @@ struct KeyValue {
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-    template <Comparable K, typename V, int t>
-    class Node {
-    private:
-        KeyValue<K, V> key_values[2*t-1];
-        Ref<Node> children[2*t];
-        size_t txn_id;
-        int n; // Number of keys in the node
-        bool is_leaf;
-    public:
-        friend class BTree<K, V, t>;
-    };
+template <Comparable T, typename V, int t>
+class Node {
+private:
+    KeyValue<T, V> key_values[2*t-1];
+    Ref<Node> children[2*t];
+    size_t txn_id;
+    int n; // Number of keys in the node
+    bool is_leaf;
+public:
+    friend class BTree<T, V, t>;
+};
 
 /**
  * \class BTree
  * \brief A B-Tree implementation based on CLRS's definition.
  * \details Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8).
  *
- * \tparam K The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
+ * \tparam T The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
  * \tparam V The type of values stored in the B-Tree. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -87,10 +73,11 @@ struct KeyValue {
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-template <Comparable K, typename V, int t>
+template <Comparable T, typename V, int t>
 class BTree {
 private:
-    Ref<Node<K, V, t>> root;
+    using NodeRef = Ref<Node<T, V, t>>;
+    NodeRef root;
     int _size;
 
     /**
@@ -100,13 +87,14 @@ private:
      * \param is_leaf A boolean indicating whether the node is a leaf node.
      * \return A Ref to the newly created node.
      */
-    Ref<Node<K, V, t>> create_node(bool is_leaf) {
-        Ref<Node<K, V, t>> node = current_db->malloc<Node<K, V, t>>();
+    NodeRef create_node(bool is_leaf) {
+        NodeRef node = current_db()->malloc<Node<T, V, t>>();
+        new (&*node) Node<T, V, t>();
         node->is_leaf = is_leaf;
-        node->txn_id = current_db->get_txn_id();
+        node->txn_id = current_db()->get_txn_id();
         node->n = 0;
         for (int i = 0; i < 2*t-1; ++i) {
-            node->key_values[i].key = K();
+            node->key_values[i].key = T();
             node->children[i] = REF_NULL;
         }
         node->children[2*t-1] = REF_NULL;
@@ -120,8 +108,8 @@ private:
      *
      * \param node The Ref to the node to be freed.
      */
-    void free_node(Ref<Node<K, V, t>> node) {
-        current_db->free(node);
+    void free_node(NodeRef node) {
+        current_db()->free(node);
     }
 
     /**
@@ -132,7 +120,7 @@ private:
      * \param key The key to search for in the B-Tree.
      * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
-    Ref<Node<K, V, t>> search(Ref<Node<K, V, t>> x, K key) {
+    NodeRef search(NodeRef x, FFDBKey<T> key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
         while (i < x->n && key > x->key_values[i].key) {
@@ -140,8 +128,8 @@ private:
         }
 
         return i < x->n && key == x->key_values[i].key ? x // Key found
-                                                      : x->is_leaf ? REF_NULL // Key not found
-                                                      : search(x->children[i], key); // Search in the child
+                                                       : x->is_leaf ? REF_NULL // Key not found
+                                                       : search(x->children[i], key); // Search in the child
     }
 
     /**
@@ -152,9 +140,9 @@ private:
      * \param x The parent node containing the child to be split.
      * \param i The index of the child node in `x` to be split.
      */
-    void split_child(Ref<Node<K, V, t>> x, int i) {
-        Ref<Node<K, V, t>> y = x->children[i];
-        Ref<Node<K, V, t>> z = create_node(y->is_leaf);
+    void split_child(NodeRef x, int i) {
+        NodeRef y = x->children[i];
+        NodeRef z = create_node(y->is_leaf);
         z->n = t - 1;
 
         // Copy the last t-1 keys of y to z
@@ -170,7 +158,7 @@ private:
         }
 
         // Store the middle key before reducing y's size
-        KeyValue<K, V> middle_key_value = y->key_values[t - 1];
+        KeyValue<T, V> middle_key_value = y->key_values[t - 1];
 
         // Reduce the number of keys in y
         y->n = t - 1;
@@ -201,10 +189,10 @@ private:
      * \param node The Ref to the node to be copied.
      * \return A Ref to the newly created copy of the node.
      */
-    Ref<Node<K, V, t>> copy_node(Ref<Node<K, V, t>> node) {
-        Ref<Node<K, V, t>> x = current_db->malloc<Node<K, V, t>>();
-        *x = *node;
-        x->txn_id = current_db->get_txn_id();
+    NodeRef copy_node(NodeRef node) {
+        NodeRef x = current_db()->malloc<Node<T, V, t>>();
+        new (&*x) Node<T, V, t>(*node);
+        x->txn_id = current_db()->get_txn_id();
         return x;
     }
 
@@ -219,7 +207,7 @@ private:
      * \param key The key to be inserted.
      * \param value The value associated with the key.
      */
-    bool insert_non_full(Ref<Node<K, V, t>> x, K key, V value) {
+    bool insert_non_full(NodeRef x, FFDBKey<T> key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->is_leaf) {
@@ -249,7 +237,7 @@ private:
             ++i; // Increment i to find the child
 
             // Copy-on-write
-            if (current_db->get_txn_id() != x->children[i]->txn_id) {
+            if (current_db()->get_txn_id() != x->children[i]->txn_id) {
                 x->children[i] = copy_node(x->children[i]);
             }
 
@@ -277,9 +265,9 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order predecessor key-value pair.
      */
-    KeyValue<K, V> get_in_order_predecessor(Ref<Node<K, V, t>> node, int i) {
+    KeyValue<T, V> get_in_order_predecessor(NodeRef node, int i) {
         // Find the rightmost child of the left child
-        Ref<Node<K, V, t>> current = node->children[i];
+        NodeRef current = node->children[i];
         while (!current->is_leaf) {
             current = current->children[current->n];
         }
@@ -295,9 +283,9 @@ private:
      * \param i The index of the key-value pair in the node.
      * \return The in-order successor key-value pair.
      */
-    KeyValue<K, V> get_in_order_successor(Ref<Node<K, V, t>> node, int i) {
+    KeyValue<T, V> get_in_order_successor(NodeRef node, int i) {
         // Find the leftmost child of the right child
-        Ref<Node<K, V, t>> current = node->children[i + 1];
+        NodeRef current = node->children[i + 1];
         while (!current->is_leaf) {
             current = current->children[0];
         }
@@ -313,9 +301,9 @@ private:
      * \param parent The parent node containing the child to be rebalanced.
      * \param i The index of the child node in the parent node's children array.
      */
-    void rebalance_node(Ref<Node<K, V, t>> parent, int i) {
-        Ref<Node<K, V, t>> left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
-        Ref<Node<K, V, t>> right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
+    void rebalance_node(NodeRef parent, int i) {
+        NodeRef left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
+        NodeRef right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
 
         // Move a key from an immediate sibling if it has enough keys
         if (left_sibling && left_sibling->n >= t) {
@@ -342,9 +330,9 @@ private:
      * \param parent The parent node containing the child and its left sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void move_key_and_child_from_left_sibling(Ref<Node<K, V, t>> parent, int i) {
-        Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> left_sibling = parent->children[i - 1];
+    void move_key_and_child_from_left_sibling(NodeRef parent, int i) {
+        NodeRef child = parent->children[i];
+        NodeRef left_sibling = parent->children[i - 1];
 
         // Shift keys right to make room for the key that we will take from parent
         for (int j = child->n - 1; j >= 0; --j) {
@@ -383,9 +371,9 @@ private:
      * \param parent The parent node containing the child and its right sibling.
      * \param i The index of the current child in the parent's children array.
      */
-    void move_key_and_child_from_right_sibling(Ref<Node<K, V, t>> parent, int i) {
-        Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> right_sibling = parent->children[i + 1];
+    void move_key_and_child_from_right_sibling(NodeRef parent, int i) {
+        NodeRef child = parent->children[i];
+        NodeRef right_sibling = parent->children[i + 1];
 
         // Bring down the key from parent
         child->key_values[child->n] = parent->key_values[i];
@@ -423,9 +411,9 @@ private:
      * \param parent The parent node containing the child and its right sibling.
      * \param i The index of the child node in the parent's children array.
      */
-    void merge(Ref<Node<K, V, t>> parent, int i) {
-        Ref<Node<K, V, t>> child = parent->children[i];
-        Ref<Node<K, V, t>> right_sibling = parent->children[i + 1];
+    void merge(NodeRef parent, int i) {
+        NodeRef child = parent->children[i];
+        NodeRef right_sibling = parent->children[i + 1];
 
         // Bring down the key from parent
         child->key_values[t - 1] = parent->key_values[i];
@@ -468,29 +456,29 @@ private:
      * \param parent The parent node containing the key to be removed.
      * \param i The index of the key in the parent node's keys array.
      */
-    bool remove_from_non_leaf(Ref<Node<K, V, t>> parent, int i) {
-        KeyValue<K, V> key_value = parent->key_values[i];
+    bool remove_from_non_leaf(NodeRef parent, int i) {
+        KeyValue<T, V> key_value = parent->key_values[i];
 
         // Copy-on-write for both children
-        if (current_db->get_txn_id() != parent->children[i]->txn_id) {
+        if (current_db()->get_txn_id() != parent->children[i]->txn_id) {
             parent->children[i] = copy_node(parent->children[i]);
         }
-        if (current_db->get_txn_id() != parent->children[i + 1]->txn_id) {
+        if (current_db()->get_txn_id() != parent->children[i + 1]->txn_id) {
             parent->children[i + 1] = copy_node(parent->children[i + 1]);
         }
-        Ref<Node<K, V, t>> left_child = parent->children[i];
-        Ref<Node<K, V, t>> right_child = parent->children[i + 1];
+        NodeRef left_child = parent->children[i];
+        NodeRef right_child = parent->children[i + 1];
 
         if (left_child->n >= t) {
             // Left child has at least t keys so we replace the key with the largest key in
             // the left subtree and recursively remove the predecessor from the left child
-            KeyValue<K, V> predecessor = get_in_order_predecessor(parent, i);
+            KeyValue<T, V> predecessor = get_in_order_predecessor(parent, i);
             parent->key_values[i] = predecessor;
             return remove(left_child, predecessor.key);
         } else if (right_child->n >= t) {
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
-            KeyValue<K, V> successor = get_in_order_successor(parent, i);
+            KeyValue<T, V> successor = get_in_order_successor(parent, i);
             parent->key_values[i] = successor;
             return remove(right_child, successor.key);
         } else {
@@ -509,7 +497,7 @@ private:
      * \param node The leaf node from which the key is to be removed.
      * \param i The index of the key to be removed in the node's `key_values` array.
      */
-    bool remove_from_leaf(Ref<Node<K, V, t>> node, const int i) {
+    bool remove_from_leaf(NodeRef node, const int i) {
         // Overwrite key by shifting keys to the left
         for (int j = i + 1; j < node->n; ++j) {
             node->key_values[j - 1] = node->key_values[j];
@@ -529,15 +517,15 @@ private:
      * \param node The node from which the key is to be removed.
      * \param key The key to be removed from the B-Tree.
      */
-    bool remove(Ref<Node<K, V, t>> node, K key) {
+    bool remove(NodeRef node, FFDBKey<T> key) {
         // Find the first key greater than or equal to key
         int i = 0;
         while (i < node->n && node->key_values[i].key < key) {
             ++i;
         }
 
-        // Ref<Node<K, V, t>> child = node->children[i];
-        Ref<Node<K, V, t>> child;
+        // Ref<Node<T, V, t>> child = node->children[i];
+        NodeRef child;
 
         // Key exists in the current node
         if (i < node->n && node->key_values[i].key == key) {
@@ -550,7 +538,7 @@ private:
             if (node->is_leaf) { return false; } // Key not found
 
             // Copy-on-write for the child node
-            if (current_db->get_txn_id() != node->children[i]->txn_id) {
+            if (current_db()->get_txn_id() != node->children[i]->txn_id) {
                 node->children[i] = copy_node(node->children[i]);
             }
             child = node->children[i];
@@ -566,7 +554,7 @@ private:
             // If child was the last child and the number of keys in the node decreased
             // after re-balancing, search for the key in the previous child instead
             if (is_last_child && i > node->n) {
-                Ref<Node<K, V, t>> prev_child = node->children[i - 1];
+                NodeRef prev_child = node->children[i - 1];
                 return remove(prev_child, key);
             } else { // Search in the child
                 return remove(child, key);
@@ -581,7 +569,7 @@ private:
      *
      * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
      */
-    void delete_node(Ref<Node<K, V, t>> node) {
+    void delete_node(NodeRef node) {
         if (node == REF_NULL) return;
 
         if (!node->is_leaf) {
@@ -603,7 +591,7 @@ private:
     * \param callback The callback function to apply to each key-value pair during the traversal.
     */
     template <typename Func>
-    void traverse_node(Ref<Node<K, V, t>> node, Func& callback) {
+    void traverse_node(NodeRef node, Func& callback) {
         if (node == REF_NULL) { return; }
 
         int i;
@@ -630,7 +618,7 @@ private:
      * \param node The Ref to the node to start printing from.
      * \param path A string representing the path to the current node in the tree.
      */
-    void print_node(Ref<Node<K, V, t>> node, const std::string &path) {
+    void print_node(NodeRef node, const std::string &path) {
         if (node == REF_NULL) { return; }
 
         int i;
@@ -666,7 +654,7 @@ public:
      * \param key The key to search for in the B-Tree.
      * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
-    Ref<Node<K, V, t>> search(K key) {
+    NodeRef search(FFDBKey<T> key) {
         return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
@@ -681,7 +669,7 @@ public:
     * \param value The value associated with the key to be inserted.
     * \return The updated root of the B-Tree.
     */
-    BTree insert(K key, V value) {
+    BTree insert(FFDBKey<T> key, V value) {
         if (root == REF_NULL) {
             root = create_node(true);
             root->key_values[0].key = key;
@@ -692,26 +680,26 @@ public:
 
         // Check if the root is full and needs to be split
         if (root->n == 2*t - 1) {
-            Ref<Node<K, V, t>> s = create_node(false);
+            NodeRef s = create_node(false);
             s->children[0] = root; // Make the old root a child of the new root
             root = s;
             split_child(s, 0); // Splits old root and moves its middle key up to the new root
             bool inserted = insert_non_full(s, key, value);
             if (!inserted) {
-                Ref<Node<K, V, t>> old_root = s->children[0];
+                NodeRef old_root = s->children[0];
                 free_node(s);
                 root = old_root;
             }
         } else {
-            Ref<Node<K, V, t>> old_root = root;
+            NodeRef old_root = root;
 
             // Copy-on-write
-            if (current_db->get_txn_id() != root->txn_id) {
+            if (current_db()->get_txn_id() != root->txn_id) {
                 root = copy_node(root);
             }
 
             bool inserted = insert_non_full(root, key, value);
-            if (!inserted && root->txn_id == current_db->get_txn_id()) {
+            if (!inserted && root->txn_id == current_db()->get_txn_id()) {
                 free_node(root);
                 root = copy_node(old_root);
             }
@@ -728,13 +716,13 @@ public:
      *
      * \param key The key to be removed from the B-Tree.
      */
-    bool remove(K key) {
+    bool remove(FFDBKey<T> key) {
         if (!root) { return false; }
 
-        Ref<Node<K, V, t>> old_root = root;
+        NodeRef old_root = root;
 
         // Copy-on-write
-        if (current_db->get_txn_id() != root->txn_id) {
+        if (current_db()->get_txn_id() != root->txn_id) {
             root = copy_node(root);
         }
 
@@ -742,11 +730,11 @@ public:
 
         // Make sure to clean up the root if it has no keys left
         if (root->n == 0) {
-            Ref<Node<K, V, t>> tmp = root;
+            NodeRef tmp = root;
             root = root->is_leaf ? REF_NULL : root->children[0];
 
             // If root changed to a child, we need to ensure copy-on-write for it too
-            if (root != REF_NULL && current_db->get_txn_id() != root->txn_id) {
+            if (root != REF_NULL && current_db()->get_txn_id() != root->txn_id) {
                 root = copy_node(root);
             }
 
@@ -754,7 +742,7 @@ public:
         }
 
         // If no actual removal happened and we copied the root, restore the old root
-        if (!removed && root->txn_id == current_db->get_txn_id()) {
+        if (!removed && root->txn_id == current_db()->get_txn_id()) {
             free_node(root);
             root = old_root;
         }
@@ -771,8 +759,8 @@ public:
      * \param new_value The new value to associate with the key.
      * \return True if the key was found and updated; false if the key does not exist in the B-Tree.
      */
-    bool update(K key, V new_value) {
-        Ref<Node<K, V, t>> node = search(key);
+    bool update(FFDBKey<T> key, V new_value) {
+        NodeRef node = search(key);
         if (node == REF_NULL) {
             return false;
         }
@@ -784,7 +772,7 @@ public:
         }
 
         // Copy-on-write
-        if (current_db->get_txn_id() != node->txn_id) {
+        if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
         }
 

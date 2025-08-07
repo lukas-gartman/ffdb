@@ -3,11 +3,18 @@
 #include <cstdint>
 #include <cstddef>
 #include <unistd.h>
+#include <stdexcept>
 
 class FFDB;
 
 extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
-extern __thread FFDB *current_db __attribute__((tls_model("initial-exec")));
+extern __thread FFDB *_current_db __attribute__((tls_model("initial-exec")));
+inline FFDB *current_db() {
+    if (!_current_db) {
+        throw std::runtime_error("FFDB: the database is not initialized. Did you forget to create an FFDB instance and start a transaction?");
+    }
+    return _current_db;
+}
 
 typedef uintptr_t Offset;
 typedef size_t Size;
@@ -73,6 +80,22 @@ const Size LARGE_ALIGNMENT = LOGICAL_PAGE_SIZE;
  *  \see Allocator::align_bytes
  */
 const Size ALIGNMENT_THRESHOLD = LARGE_ALIGNMENT;
+
+/**
+ * \brief Ensures that the key type is comparable to other keys.
+ * \details This concept checks that the type `T` supports comparison operators
+ *          such as `<`, `<=`, `>`, `>=`, `==`, and `!=`, all of which must return
+ *          a value convertible to `bool`.
+ */
+template <typename T>
+concept Comparable = requires(T a, T b) {
+    { a < b }  -> std::convertible_to<bool>;
+    { a <= b } -> std::convertible_to<bool>;
+    { a > b }  -> std::convertible_to<bool>;
+    { a >= b } -> std::convertible_to<bool>;
+    { a == b } -> std::convertible_to<bool>;
+    { a != b } -> std::convertible_to<bool>;
+};
 
 template <class A> class Ref {
 private:
