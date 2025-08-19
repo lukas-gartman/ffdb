@@ -2,7 +2,7 @@
 #include <random>
 #include <fcntl.h>
 #include <vector>
-#include "../src/FFDB2.h"
+#include "../src/FFDB.h"
 
 /* TestAllocFreeTop
  * Allocates one page full of uint64_t values, then frees them all. It then allocates another page of memory. What
@@ -114,73 +114,6 @@ TEST(AllocatorTest, TestFreeLFBlock) {
 
     EXPECT_EQ(arr1, arr6); // Same as above. If the allocator works correctly, arr6 should be at the same
                            // address as arr1 and arr5.
-
-    db.commit_txn();
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, TestResize) {
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-
-    db.start_txn(DB_WRITE_TXN);
-
-    auto a = db.malloc<uint32_t>();
-    auto b = db.malloc<uint16_t>();
-    auto c = db.malloc<int64_t>();
-    auto d = db.malloc<float>();
-    auto e = db.malloc<uint8_t>();
-    auto f = db.malloc<double>();
-    auto g = db.malloc<int16_t>();
-    auto h = db.malloc<uint32_t>();
-    auto i = db.malloc<int8_t>();
-    auto j = db.malloc<int64_t>();
-    auto k = db.malloc<float>();
-    auto l = db.malloc<uint32_t>();
-    auto m = db.malloc<uint16_t>();
-    auto n = db.malloc<uint8_t>();
-    auto o = db.malloc<double>();
-    auto p = db.malloc<int32_t>();
-    auto q = db.malloc<int64_t>();
-    auto r = db.malloc<uint16_t>();
-    auto s = db.malloc<float>();
-    auto t = db.malloc<uint8_t>();
-    auto u = db.malloc<double>();
-    auto v = db.malloc<int16_t>();
-
-    db.free(a);
-    std::cout << "Tree1--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(c);
-    std::cout << "Tree2--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(e);
-    std::cout << "Tree3--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(g);
-    std::cout << "Tree4--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(i);
-    std::cout << "Tree5--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(k);
-    std::cout << "Tree6--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(m);
-    std::cout << "Tree7--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(o);
-    std::cout << "Tree8--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(q);
-    std::cout << "Tree9--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(s);
-    std::cout << "Tree10--------------------------------" << std::endl;
-    db.print_tree();
-    db.free(u);
-    std::cout << "Tree11--------------------------------" << std::endl;
-    db.print_tree();
 
     db.commit_txn();
 

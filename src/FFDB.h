@@ -18,7 +18,7 @@ using string = std::string;
  */
 struct Block {
     /** \brief The position of the block in memory. */
-    Offset obj;
+    Offset ofs;
 
     /** \brief The size of the block. */
     Size size;
@@ -75,7 +75,7 @@ struct SharedState {
     Ref<BlockDescr> free_descrs;
 
     uint32_t revision_count;
-    Ref<Revision> active_revision;
+    Offset active_txn_root;
     Revision revisions[];
 };
 
@@ -87,6 +87,8 @@ struct SharedState {
  * during the transaction's lifecycle, allowing for commit or rollback operations.
  */
 struct WriterState {
+    Offset txn_root;
+
     /** \brief The offset to the top adress associated with the transaction. */
     Offset top;
 
@@ -112,10 +114,14 @@ struct WriterState {
     Block lo_block;
 };
 
+/** \brief Represents the current database transaction state.
+ *
+ *  Used to determine what transaction state the database currently is in.
+ */
 enum DBMode {
-    DB_NO_TXN,
-    DB_READ_TXN,
-    DB_WRITE_TXN
+    DB_NO_TXN,   /**< No active transaction is in progress. */
+    DB_READ_TXN, /**< A read-only transaction is active. */
+    DB_WRITE_TXN /**< A write transaction is active, allowing modifications. */
 };
 
 class FFDB {
@@ -144,6 +150,7 @@ private:
     Ref<BlockDescr> rotr_bd_tree_node(Ref<BlockDescr> tree);
     Ref<BlockDescr> balancel_bd_tree(Ref<BlockDescr> tree);
     Ref<BlockDescr> balancer_bd_tree(Ref<BlockDescr> tree);
+
     int get_size(Ref<BlockDescr> node);
     std::pair<Ref<BlockDescr>, Ref<BlockDescr>> get_children(Ref<BlockDescr> node);
 
@@ -154,6 +161,13 @@ private:
 
     void resize_map(Size min_size);
 
+    template <typename T>
+    Ref<T> copy(Ref<T> obj) {
+        auto copy = malloc<T>();
+        memcpy(copy, obj, sizeof(T));
+        return copy;
+    }
+
 public:
     FFDB(string filepath, int flags, int mode, Size init_size);
 
@@ -162,9 +176,9 @@ public:
         return malloc_internal(sizeof(A) * elem_amount);
     }
 
-    template<class A> void free(Ref<A> obj, Size elem_amount = 1) {
+    template<class A> void free(Ref<A> ref, Size elem_amount = 1) {
         if (elem_amount == 0) return;
-        free_internal(obj.as_offset(), sizeof(A) * elem_amount);
+        free_internal(ref.as_offset(), sizeof(A) * elem_amount);
     }
 
     Revision *register_revision(Offset root, Id txn_id);
@@ -173,6 +187,21 @@ public:
     void start_txn(DBMode mode);
     void rollback_txn();
     void commit_txn();
+
+    void set_new_txn_root(Offset root);
+
+    template<class A>
+    Ref<A> update_txn_root() {
+        if (shared_state->active_txn_root == 0) throw std::runtime_error("No active txn root exists. ");
+
+        Ref<A> root_ref = shared_state->active_txn_root;
+        Ref<A> root_cpy = copy<A>(root_ref.as_offset());
+        set_new_txn_root(root_cpy);
+
+        free(root_ref);
+
+        return root_cpy;
+    }
 
     Id get_txn_id() const {
         return shared_state->curr_txn_id;
@@ -193,29 +222,6 @@ public:
         assert(get_size(right) >= get_size(left_left));
         assert(get_size(right) >= get_size(left_right));
     }
-
-    void print_tree() {
-        print_tree(writer_state.free_blocks, "n");
-    }
-
-    void print_tree(Ref<BlockDescr> tree, std::string path) {
-        if (tree == 0) {
-            std::cout << ">>" << path << std::endl;
-            std::cout << "null" << std::endl << std::endl;
-            return;
-        }
-
-        std::cout << ">>" << path << std::endl;
-        std::cout << "SIZE: " << tree->block.size << std::endl;
-        std::cout << "Node size: " << tree->tree_size << std::endl;
-        std::cout << "Descr txn id: " << tree->txn_id << std::endl;
-        std::cout << "Block: (" << tree->block.obj << ", " << tree->block.size << ", " <<tree->block.txn_id << ")" << std::endl << std::endl;
-
-        print_tree(tree->tree_left, path + string("l"));
-        print_tree(tree->tree_right, path + string("r"));
-    }
-
-    void dump_block_descrs() const;
 };
 
 #endif //FFDB2_H

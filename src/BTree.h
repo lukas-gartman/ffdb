@@ -1,20 +1,20 @@
 // A B-Tree using CLRS's definition
 // Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8)
-
 #ifndef BTREE_H
 #define BTREE_H
 
 #include <concepts>
-#include "FFDB2.h"
+#include <algorithm>
+#include "FFDB.h"
 #include "FFDBKey.h"
 #include "Typedefs.h"
 
 namespace BTree {
 
-template <Comparable T, typename V, int t>
+template <PrimitiveVal T, typename V, int t>
 class BTree;
 
-template <Comparable T, typename V, int t>
+template <PrimitiveVal T, typename V, int t>
 class Node;
 
 #define REF_NULL Ref<Node<T, V, t>>::null()
@@ -25,14 +25,16 @@ class Node;
 * \details Stores a key of type `T` and a value of either type `V` or a reference to `V`.
 *          A `Ref` is used to store the value in an overflow page if the value does not fit within the node.
 *
-* \tparam T The type of the key. Must satisfy the Comparable concept.
+* \tparam T The type of the key. Must satisfy the PrimitiveVal concept.
 * \tparam V The type of the value. Can be a direct value or a `Ref` to the value.
 */
-template <Comparable T, typename V>
+
+template <PrimitiveVal T, typename V>
 struct KeyValue {
     FFDBKey<T> key;
     std::variant<V, Ref<V>> value;
 };
+
 
 /**
  * \class Node
@@ -40,7 +42,7 @@ struct KeyValue {
  * \details Each node contains an array of key-value pairs, an array of child node Refs,
  *          the number of keys, and whether the node is a leaf.
  *
- * \tparam T The type of keys stored in the node. Must satisfy the Comparable concept.
+ * \tparam T The type of keys stored in the node. Must satisfy the PrimitiveVal concept.
  * \tparam V The type of values stored in the node. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -48,11 +50,11 @@ struct KeyValue {
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-template <Comparable T, typename V, int t>
+template <PrimitiveVal T, typename V, int t>
 class Node {
 private:
-    KeyValue<T, V> key_values[2*t-1];
-    Ref<Node> children[2*t];
+    KeyValue<T, V> key_values[2 * t - 1];
+    Ref<Node> children[2 * t];
     size_t txn_id;
     int n; // Number of keys in the node
     bool is_leaf;
@@ -60,12 +62,61 @@ public:
     friend class BTree<T, V, t>;
 };
 
+template<PrimitiveVal T, typename V>
+constexpr Size sizeof_node(int t) {
+    auto align = [](Size bytes, Size alignment) {
+        return (bytes + alignment - 1) & ~(alignment - 1);
+    };
+
+    constexpr int n = 5;
+    Size sizes[n] = {
+            sizeof(KeyValue<T, V>) * (2 * t - 1),
+            sizeof(Ref<void>) * 2 * t, // All types of Refs are the same size
+            sizeof(Size),
+            sizeof(int),
+            sizeof(bool)
+    };
+    Size alignments[n] = {
+            alignof(KeyValue<T, V>),
+            alignof(Ref<void>), // All types of Refs are aligned the same
+            alignof(Size),
+            alignof(int),
+            alignof(bool)
+    };
+
+    Size max_align = std::max({
+        alignof(KeyValue<T, V>),
+        alignof(Ref<void>), // All types of Refs are aligned the same
+        alignof(Size),
+        alignof(int),
+        alignof(bool)
+    });
+
+    Size total_size = 0;
+    for (int i = 0; i < n; i++) {
+        total_size = align(total_size, alignments[i]);
+        total_size += sizes[i];
+    }
+
+    return align(total_size, max_align);
+}
+
+template<PrimitiveVal T, typename V>
+constexpr int find_t(Size bytes) {
+    int best_t = 0;
+    for (int t = 2; t < bytes; t++) {
+        if (sizeof_node<T, V>(t) > bytes) break;
+        best_t = t;
+    }
+    return best_t;
+}
+
 /**
  * \class BTree
  * \brief A B-Tree implementation based on CLRS's definition.
  * \details Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8).
  *
- * \tparam T The type of keys stored in the B-Tree. Must satisfy the Comparable concept.
+ * \tparam T The type of keys stored in the B-Tree. Must satisfy the PrimitiveVal concept.
  * \tparam V The type of values stored in the B-Tree. Can be a direct value or a `Ref` to the value in an overflow page.
  * \tparam t The minimum degree of the B-Tree. It defines:
  *           - The minimum number of keys in a non-root node (`t - 1`).
@@ -73,7 +124,7 @@ public:
  *           - The minimum number of children in a non-leaf, non-root node (`t`).
  *           - The maximum number of children in any node (`2 * t`).
  */
-template <Comparable T, typename V, int t>
+template <PrimitiveVal T, typename V, int t>
 class BTree {
 private:
     using NodeRef = Ref<Node<T, V, t>>;
@@ -120,7 +171,8 @@ private:
      * \param key The key to search for in the B-Tree.
      * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
      */
-    NodeRef search(NodeRef x, FFDBKey<T> key) {
+    template <ValidKeyArg<T> K>
+    NodeRef search(NodeRef x, const K &key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
         while (i < x->n && key > x->key_values[i].key) {
@@ -207,7 +259,8 @@ private:
      * \param key The key to be inserted.
      * \param value The value associated with the key.
      */
-    bool insert_non_full(NodeRef x, FFDBKey<T> key, V value) {
+    template<ValidKeyArg<T> K>
+    bool insert_non_full(NodeRef x, const K &key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
         if (x->is_leaf) {
@@ -223,7 +276,7 @@ private:
             }
 
             // Insert the new key
-            x->key_values[i+1].key = key;
+            x->key_values[i+1].key = FFDBKey<T>(key);
             x->key_values[i+1].value = value;
             x->n = x->n + 1;
             ++_size;
@@ -257,14 +310,14 @@ private:
     }
 
     /**
-     * \brief Retrieves the in-order predecessor of a key.
-     * \details This function finds the largest key-value pair in the left subtree of the node at the given index.
-     *          It traverses to the rightmost child of the left child to locate the predecessor.
-     *
-     * \param node The node containing the key-value pair whose predecessor is to be found.
-     * \param i The index of the key-value pair in the node.
-     * \return The in-order predecessor key-value pair.
-     */
+    * \brief Retrieves the in-order predecessor of a key.
+    * \details This function finds the largest key-value pair in the left subtree of the node at the given index.
+    *          It traverses to the rightmost child of the left child to locate the predecessor.
+    *
+    * \param node The node containing the key-value pair whose predecessor is to be found.
+    * \param i The index of the key-value pair in the node.
+    * \return The in-order predecessor key-value pair.
+    */
     KeyValue<T, V> get_in_order_predecessor(NodeRef node, int i) {
         // Find the rightmost child of the left child
         NodeRef current = node->children[i];
@@ -275,14 +328,14 @@ private:
     }
 
     /**
-     * \brief Retrieves the in-order successor of a key-value pair.
-     * \details This function finds the smallest key-value pair in the right subtree of the node at the given index.
-     *          It traverses to the leftmost child of the right child to locate the successor.
-     *
-     * \param node The node containing the key-value pair whose successor is to be found.
-     * \param i The index of the key-value pair in the node.
-     * \return The in-order successor key-value pair.
-     */
+    * \brief Retrieves the in-order successor of a key-value pair.
+    * \details This function finds the smallest key-value pair in the right subtree of the node at the given index.
+    *          It traverses to the leftmost child of the right child to locate the successor.
+    *
+    * \param node The node containing the key-value pair whose successor is to be found.
+    * \param i The index of the key-value pair in the node.
+    * \return The in-order successor key-value pair.
+    */
     KeyValue<T, V> get_in_order_successor(NodeRef node, int i) {
         // Find the leftmost child of the right child
         NodeRef current = node->children[i + 1];
@@ -293,14 +346,14 @@ private:
     }
 
     /**
-     * \brief Rebalances a node.
-     * \details This function ensures that a node satisfies the minimum degree property.
-     *          If a child node has fewer than the required number of keys, it attempts to rebalance
-     *          the node by borrowing a key from an immediate sibling or merging with a sibling.
-     *
-     * \param parent The parent node containing the child to be rebalanced.
-     * \param i The index of the child node in the parent node's children array.
-     */
+    * \brief Rebalances a node.
+    * \details This function ensures that a node satisfies the minimum degree property.
+    *          If a child node has fewer than the required number of keys, it attempts to rebalance
+    *          the node by borrowing a key from an immediate sibling or merging with a sibling.
+    *
+    * \param parent The parent node containing the child to be rebalanced.
+    * \param i The index of the child node in the parent node's children array.
+    */
     void rebalance_node(NodeRef parent, int i) {
         NodeRef left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
         NodeRef right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
@@ -322,14 +375,14 @@ private:
     }
 
     /**
-     * \brief Moves a key-value pair and child from the left sibling to the current child.
-     * \details This function rebalances a node by moving a key-value pair from the left sibling
-     *          to the parent and a key-value pair from the parent to the current child. It also
-     *          moves the last child of the left sibling to the current child.
-     *
-     * \param parent The parent node containing the child and its left sibling.
-     * \param i The index of the current child in the parent's children array.
-     */
+    * \brief Moves a key-value pair and child from the left sibling to the current child.
+    * \details This function rebalances a node by moving a key-value pair from the left sibling
+    *          to the parent and a key-value pair from the parent to the current child. It also
+    *          moves the last child of the left sibling to the current child.
+    *
+    * \param parent The parent node containing the child and its left sibling.
+    * \param i The index of the current child in the parent's children array.
+    */
     void move_key_and_child_from_left_sibling(NodeRef parent, int i) {
         NodeRef child = parent->children[i];
         NodeRef left_sibling = parent->children[i - 1];
@@ -363,14 +416,14 @@ private:
     }
 
     /**
-     * \brief Moves a key-value pair and child from the right sibling to the current child.
-     * \details This function rebalances a node by moving a key-value pair from the right sibling
-     *          to the parent and a key-value pair from the parent to the current child. It also
-     *          moves the first child of the right sibling to the current child.
-     *
-     * \param parent The parent node containing the child and its right sibling.
-     * \param i The index of the current child in the parent's children array.
-     */
+    * \brief Moves a key-value pair and child from the right sibling to the current child.
+    * \details This function rebalances a node by moving a key-value pair from the right sibling
+    *          to the parent and a key-value pair from the parent to the current child. It also
+    *          moves the first child of the right sibling to the current child.
+    *
+    * \param parent The parent node containing the child and its right sibling.
+    * \param i The index of the current child in the parent's children array.
+    */
     void move_key_and_child_from_right_sibling(NodeRef parent, int i) {
         NodeRef child = parent->children[i];
         NodeRef right_sibling = parent->children[i + 1];
@@ -403,14 +456,14 @@ private:
     }
 
     /**
-     * \brief Merges a child node with its right sibling.
-     * \details This function merges the child node at index `i` with its right sibling in the parent node.
-     *          The key-value pair from the parent node that separates the two children is moved down into the merged node.
-     *          The right sibling is then deallocated, and the parent node is updated to reflect the merge.
-     *
-     * \param parent The parent node containing the child and its right sibling.
-     * \param i The index of the child node in the parent's children array.
-     */
+    * \brief Merges a child node with its right sibling.
+    * \details This function merges the child node at index `i` with its right sibling in the parent node.
+    *          The key-value pair from the parent node that separates the two children is moved down into the merged node.
+    *          The right sibling is then deallocated, and the parent node is updated to reflect the merge.
+    *
+    * \param parent The parent node containing the child and its right sibling.
+    * \param i The index of the child node in the parent's children array.
+    */
     void merge(NodeRef parent, int i) {
         NodeRef child = parent->children[i];
         NodeRef right_sibling = parent->children[i + 1];
@@ -448,14 +501,14 @@ private:
     }
 
     /**
-     * \brief Removes a key from a non-leaf node.
-     * \details This function handles the removal of a key from a non-leaf node. Depending on
-     *          the state of the child nodes, it either replaces the key with its in-order
-     *          predecessor or successor, or merges the child nodes if necessary.
-     *
-     * \param parent The parent node containing the key to be removed.
-     * \param i The index of the key in the parent node's keys array.
-     */
+    * \brief Removes a key from a non-leaf node.
+    * \details This function handles the removal of a key from a non-leaf node. Depending on
+    *          the state of the child nodes, it either replaces the key with its in-order
+    *          predecessor or successor, or merges the child nodes if necessary.
+    *
+    * \param parent The parent node containing the key to be removed.
+    * \param i The index of the key in the parent node's keys array.
+    */
     bool remove_from_non_leaf(NodeRef parent, int i) {
         KeyValue<T, V> key_value = parent->key_values[i];
 
@@ -509,15 +562,16 @@ private:
     }
 
     /**
-     * \brief Removes a key from the B-Tree.
-     * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
-     *          If the key-value pair exists in the current node, it is removed directly. Otherwise, the function searches
-     *          for the key-value pair in the appropriate child node, rebalancing the tree if necessary.
-     *
-     * \param node The node from which the key is to be removed.
-     * \param key The key to be removed from the B-Tree.
-     */
-    bool remove(NodeRef node, FFDBKey<T> key) {
+    * \brief Removes a key from the B-Tree.
+    * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
+    *          If the key-value pair exists in the current node, it is removed directly. Otherwise, the function searches
+    *          for the key-value pair in the appropriate child node, rebalancing the tree if necessary.
+    *
+    * \param node The node from which the key is to be removed.
+    * \param key The key to be removed from the B-Tree.
+    */
+    template <ValidKeyArg<T> K>
+    bool remove(NodeRef node, const K &key) {
         // Find the first key greater than or equal to key
         int i = 0;
         while (i < node->n && node->key_values[i].key < key) {
@@ -563,12 +617,12 @@ private:
     }
 
     /**
-     * \brief Recursively deletes a node and its children from the B-Tree.
-     * \details This function deallocates the memory associated with a given node and all its child nodes.
-     *          It ensures that all nodes in the subtree rooted at the given node are properly freed.
-     *
-     * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
-     */
+    * \brief Recursively deletes a node and its children from the B-Tree.
+    * \details This function deallocates the memory associated with a given node and all its child nodes.
+    *          It ensures that all nodes in the subtree rooted at the given node are properly freed.
+    *
+    * \param node The Ref to the node to be deleted. If the node is null, the function does nothing.
+    */
     void delete_node(NodeRef node) {
         if (node == REF_NULL) return;
 
@@ -611,13 +665,13 @@ private:
     }
 
     /**
-     * \brief Recursively prints the keys and values of the B-Tree nodes.
-     * \details This function performs a recursive traversal of the B-Tree, starting from the given node.
-     *          It prints the keys and values of each node and their respective paths in the tree.
-     *
-     * \param node The Ref to the node to start printing from.
-     * \param path A string representing the path to the current node in the tree.
-     */
+    * \brief Recursively prints the keys and values of the B-Tree nodes.
+    * \details This function performs a recursive traversal of the B-Tree, starting from the given node.
+    *          It prints the keys and values of each node and their respective paths in the tree.
+    *
+    * \param node The Ref to the node to start printing from.
+    * \param path A string representing the path to the current node in the tree.
+    */
     void print_node(NodeRef node, const std::string &path) {
         if (node == REF_NULL) { return; }
 
@@ -646,15 +700,16 @@ public:
     // ~BTree() { delete_node(root); }
 
     /**
-     * \brief Searches for a key in the B-Tree.
-     * \details This function searches for a key starting from the root node of the B-Tree.
-     *          If the key is found, it returns a Ref to the node containing the key.
-     *          If the key is not found, it returns a null Ref.
-     *
-     * \param key The key to search for in the B-Tree.
-     * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
-     */
-    NodeRef search(FFDBKey<T> key) {
+    * \brief Searches for a key in the B-Tree.
+    * \details This function searches for a key starting from the root node of the B-Tree.
+    *          If the key is found, it returns a Ref to the node containing the key.
+    *          If the key is not found, it returns a null Ref.
+    *
+    * \param key The key to search for in the B-Tree.
+    * \return A Ref to the node containing the key, or REF_NULL if the key is not found.
+    */
+    template <ValidKeyArg<T> K>
+    NodeRef search(const K &key) {
         return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
@@ -669,7 +724,8 @@ public:
     * \param value The value associated with the key to be inserted.
     * \return The updated root of the B-Tree.
     */
-    BTree insert(FFDBKey<T> key, V value) {
+    template <ValidKeyArg<T> K>
+    BTree insert(const K &key, V value) {
         if (root == REF_NULL) {
             root = create_node(true);
             root->key_values[0].key = key;
@@ -709,14 +765,15 @@ public:
     }
 
     /**
-     * \brief Removes a key from the B-Tree.
-     * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
-     *          If the root node becomes empty after the removal, it is cleaned up and replaced with its first child
-     *          (if it exists) or set to null if the tree becomes empty.
-     *
-     * \param key The key to be removed from the B-Tree.
-     */
-    bool remove(FFDBKey<T> key) {
+    * \brief Removes a key from the B-Tree.
+    * \details This function removes a key from the B-Tree, ensuring that the tree maintains its properties.
+    *          If the root node becomes empty after the removal, it is cleaned up and replaced with its first child
+    *          (if it exists) or set to null if the tree becomes empty.
+    *
+    * \param key The key to be removed from the B-Tree.
+    */
+    template <ValidKeyArg<T> K>
+    bool remove(const K &key) {
         if (!root) { return false; }
 
         NodeRef old_root = root;
@@ -759,7 +816,8 @@ public:
      * \param new_value The new value to associate with the key.
      * \return True if the key was found and updated; false if the key does not exist in the B-Tree.
      */
-    bool update(FFDBKey<T> key, V new_value) {
+    template <ValidKeyArg<T> K>
+    bool update(const K &key, V new_value) {
         NodeRef node = search(key);
         if (node == REF_NULL) {
             return false;

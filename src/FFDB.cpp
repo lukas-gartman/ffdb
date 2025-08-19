@@ -1,4 +1,4 @@
-#include "FFDB2.h"
+#include "FFDB.h"
 
 #include <fcntl.h>
 #include <stdexcept>
@@ -35,10 +35,9 @@ static Size bytes_left_in_page(const Offset offset) {
     return LOGICAL_PAGE_SIZE - (offset & (LOGICAL_PAGE_SIZE - 1));
 }
 
-// TODO: Should be SYSTEM_PAGE_SIZE?
 static Size calc_mem_map_size(const Size init_size) {
     Size new_size =
-            ((init_size + LOGICAL_PAGE_SIZE - 1) / LOGICAL_PAGE_SIZE) * LOGICAL_PAGE_SIZE;
+            ((init_size + SYSTEM_PAGE_SIZE - 1) / SYSTEM_PAGE_SIZE) * SYSTEM_PAGE_SIZE;
 
     if (new_size < MIN_DB_SIZE)
         new_size = MIN_DB_SIZE;
@@ -63,21 +62,21 @@ static Size next_size(const Size curr_size, const Size min_size) {
 
 Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
-        throw std::runtime_error("No transaction started");
+        throw std::runtime_error("Database not in write mode.");
 
     Offset offset;
 
     // Check if there is a free block cached that can be used.
-    if (writer_state.lf_block.obj != 0 &&
+    if (writer_state.lf_block.ofs != 0 &&
         writer_state.lf_block.size >= bytes &&
         writer_state.lf_block.txn_id < shared_state->min_txn_id) {
 
-        offset = writer_state.lf_block.obj;
-        writer_state.lf_block.obj += bytes;
+        offset = writer_state.lf_block.ofs;
+        writer_state.lf_block.ofs += bytes;
         writer_state.lf_block.size -= bytes;
 
         if (writer_state.lf_block.size == 0) {
-            writer_state.lf_block.obj = 0;
+            writer_state.lf_block.ofs = 0;
             writer_state.lf_block.txn_id = 0;
         }
 
@@ -87,10 +86,10 @@ Offset FFDB::malloc_internal(Size bytes) {
     // Try finding a fitting block in the block descriptor list.
     auto [new_tree, found_block] = del_bd_tree(writer_state.free_blocks, bytes);
     writer_state.free_blocks = new_tree;
-    offset = found_block.obj;
+    offset = found_block.ofs;
     if (offset != 0) {
         if (found_block.size > bytes) {
-            if (writer_state.lf_block.obj != 0) {
+            if (writer_state.lf_block.ofs != 0) {
                 writer_state.free_blocks = ins_bd_tree(
                     writer_state.free_blocks,
                     writer_state.lf_block
@@ -113,7 +112,7 @@ Offset FFDB::malloc_internal(Size bytes) {
 
 void FFDB::free_internal(Offset obj, Size bytes) {
     if (db_mode != DB_WRITE_TXN)
-        throw std::runtime_error("No transaction started");
+        throw std::runtime_error("Database not in write mode.");
 
     if (obj == 0) return;
 
@@ -122,9 +121,9 @@ void FFDB::free_internal(Offset obj, Size bytes) {
     if (txn_id == 0 && obj + bytes == writer_state.top) {
         writer_state.top -= bytes;
 
-        if (writer_state.lf_block.obj != 0 &&
+        if (writer_state.lf_block.ofs != 0 &&
             writer_state.lf_block.txn_id == 0 &&
-            writer_state.lf_block.obj + writer_state.lf_block.size == writer_state.top) {
+            writer_state.lf_block.ofs + writer_state.lf_block.size == writer_state.top) {
 
             writer_state.top -= writer_state.lf_block.size;
             writer_state.lf_block = {0, 0, 0};
@@ -132,26 +131,23 @@ void FFDB::free_internal(Offset obj, Size bytes) {
         return;
     }
 
-    if (writer_state.lf_block.obj != 0) {
+    if (writer_state.lf_block.ofs != 0) {
         // Merge with lf_block is adjacent.
         const bool lf_block_is_before =
-                writer_state.lf_block.obj + writer_state.lf_block.size == obj;
+                writer_state.lf_block.ofs + writer_state.lf_block.size == obj;
         const bool lf_block_is_after =
-                obj + bytes == writer_state.lf_block.obj;
+                obj + bytes == writer_state.lf_block.ofs;
 
         if ((lf_block_is_before || lf_block_is_after) &&
             writer_state.lf_block.txn_id == txn_id) {
 
             writer_state.lf_block.size += bytes;
-            if (lf_block_is_after) writer_state.lf_block.obj = obj;
+            if (lf_block_is_after) writer_state.lf_block.ofs = obj;
 
             return;
         }
 
         // Otherwise, it will get replaced.
-        std::cout << "Replacing lf_block: "
-                  << writer_state.lf_block.obj << " + " << writer_state.lf_block.size
-                  << " with " << obj << " + " << bytes << std::endl;
         writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, writer_state.lf_block);
     }
 
@@ -269,7 +265,7 @@ std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size b
         auto [new_tree_right, found_block] =
             del_bd_tree(tree->tree_right, block_size);
 
-        if (found_block.obj != 0) {
+        if (found_block.ofs != 0) {
             tree = upd_bd_tree_node(tree, tree->tree_left, new_tree_right);
             tree = balancel_bd_tree(tree);
         }
@@ -282,7 +278,7 @@ std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size b
             del_bd_tree(tree->tree_left, block_size);
 
         // We have found a fitting block. Return.
-        if (found_block.obj != 0) {
+        if (found_block.ofs != 0) {
             tree = balancer_bd_tree(upd_bd_tree_node(tree, new_tree_left, tree->tree_right));
             return std::make_pair(tree, found_block);
         }
@@ -638,12 +634,13 @@ void FFDB::start_txn(DBMode mode) {
         if (mprotect(base, mmap_size, PROT_READ | PROT_WRITE) == -1)
             throw std::runtime_error("Errno: " + std::to_string(errno));
 
+        writer_state.txn_root = shared_state->active_txn_root;
         writer_state.top = shared_state->top;
         writer_state.free_blocks = shared_state->free_blocks;
         writer_state.unused_descrs = shared_state->free_descrs;
         writer_state.pending_unused_descrs = 0;
         writer_state.pending_unused_last = 0;
-        writer_state.lf_block.obj = 0;
+        writer_state.lf_block.ofs = 0;
         writer_state.lf_block.size = 0;
         writer_state.lf_block.txn_id = 0;
     }
@@ -684,6 +681,7 @@ void FFDB::commit_txn()  {
         return;
     }
 
+    auto saved_root = shared_state->active_txn_root;
     auto saved_top = shared_state->top;
     auto saved_free_list = shared_state->free_blocks;
     auto saved_free_descriptors = shared_state->free_descrs;
@@ -696,6 +694,7 @@ void FFDB::commit_txn()  {
     if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0)
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
+    shared_state->active_txn_root = writer_state.txn_root;
     shared_state->top = writer_state.top;
     shared_state->free_blocks = writer_state.free_blocks;
     shared_state->free_descrs = writer_state.unused_descrs;
@@ -705,6 +704,7 @@ void FFDB::commit_txn()  {
         throw std::runtime_error("Errno: " + std::to_string(errno));
 
     if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0) {
+        shared_state->active_txn_root = saved_root;
         shared_state->top = saved_top;
         shared_state->free_blocks = saved_free_list;
         shared_state->free_descrs = saved_free_descriptors;
@@ -717,4 +717,8 @@ void FFDB::commit_txn()  {
 
     unlock();
     db_mode = DB_NO_TXN;
+}
+
+void FFDB::set_new_txn_root(Offset root) {
+    writer_state.txn_root = root;
 }

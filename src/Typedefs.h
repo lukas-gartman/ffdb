@@ -97,6 +97,19 @@ concept Comparable = requires(T a, T b) {
     { a != b } -> std::convertible_to<bool>;
 };
 
+template<typename T>
+concept PrimitiveVal = std::is_integral_v<T> || std::is_floating_point_v<T>;
+
+template <PrimitiveVal T>
+class FFDBKey;
+
+// Ancient Mesopotamian programancy.
+template <typename U, typename T>
+concept ValidKeyArg = std::same_as<std::remove_cvref_t<U>, T>                  // Allow T
+        || std::same_as<std::remove_cvref_t<U>, FFDBKey<T>>                    // Allow FFDBKey<T>
+        || (std::is_array_v<std::remove_cvref_t<U>>                            // Allow T[n]
+            && std::same_as<std::remove_extent_t<std::remove_cvref_t<U>>, T>);
+
 template <class A> class Ref {
 private:
     Offset offset;

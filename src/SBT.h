@@ -2,13 +2,13 @@
 #define SBT_H
 
 #include <concepts>
-#include "FFDB2.h"
+#include "FFDB.h"
 #include "FFDBKey.h"
 #include "Typedefs.h"
 
 namespace SBT {
 
-template <Comparable T, typename V>
+template <PrimitiveVal T, typename V>
 class Node {
 public:
     FFDBKey<T> key;
@@ -18,7 +18,8 @@ public:
     size_t txn_id;
     int size; // subtree size
 
-    Node(const FFDBKey<T> &k, const V &v, Id txn_id)
+    template<ValidKeyArg<T> K>
+    Node(const K &k, const V &v, Id txn_id)
         : key(k), value(v), left(Ref<Node>::null()), right(Ref<Node>::null()), txn_id(txn_id), size(1) {}
 };
 
@@ -35,6 +36,7 @@ class SBT {
     }
 
     void free_node(Ref<Node<T, V>> node) {
+        node->key.free_ref(); // Need to free ref because the key is not needed anymore.
         current_db()->free(node);
     }
 
@@ -97,7 +99,8 @@ class SBT {
         maintain(node, true);
     }
 
-    bool insert(Ref<Node<T, V>> &node, const FFDBKey<T> &key, const V &value) {
+    template<ValidKeyArg<T> K>
+    bool insert(Ref<Node<T, V>> &node, const K &key, const V &value) {
         if (!node) {
             node = current_db()->malloc<Node<T, V>>();
             new (&*node) Node<T, V>(key, value, current_db()->get_txn_id());
@@ -120,7 +123,8 @@ class SBT {
         return res;
     }
 
-    bool update(Ref<Node<T, V>> &node, const FFDBKey<T> &key, const V &value) {
+    template<ValidKeyArg<T> K>
+    bool update(Ref<Node<T, V>> &node, const K &key, const V &value) {
         if (!node) return false;
         if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
@@ -135,13 +139,15 @@ class SBT {
         }
     }
 
-    Ref<Node<T, V>> search(Ref<Node<T, V>> node, const FFDBKey<T> &key) const {
+    template<ValidKeyArg<T> K>
+    Ref<Node<T, V>> search(Ref<Node<T, V>> node, const K &key) const {
         if (!node || node->key == key) return node;
         if (key < node->key) return search(node->left, key);
         return search(node->right, key);
     }
 
-    bool remove(Ref<Node<T, V>> &node, const FFDBKey<T> &key) {
+    template<ValidKeyArg<T> K>
+    bool remove(Ref<Node<T, V>> &node, const K &key) {
         if (!node) return false;
         if (current_db()->get_txn_id() != node->txn_id) {
             node = copy_node(node);
@@ -184,11 +190,14 @@ public:
 
     // ~SBT() { destroy(root); }
 
-    bool insert(const FFDBKey<T> &key, const V &value) { return insert(root, key, value); }
+    template<ValidKeyArg<T> K>
+    bool insert(const K &key, const V &value) { return insert(root, key, value); }
 
-    bool update(const FFDBKey<T> &key, const V &value) { return update(root, key, value); }
+    template<ValidKeyArg<T> K>
+    bool update(const K &key, const V &value) { return update(root, key, value); }
 
-    bool search(const FFDBKey<T> &key, V &value) const {
+    template<ValidKeyArg<T> K>
+    bool search(const K &key, V &value) const {
         Ref<Node<T, V>> node = search(root, key);
         if (node) {
             value = node->value;
@@ -197,7 +206,8 @@ public:
         return false;
     }
 
-    bool remove(const FFDBKey<T> &key) { return remove(root, key); }
+    template<ValidKeyArg<T> K>
+    bool remove(const K &key) { return remove(root, key); }
 
     template <typename Func>
     void in_order(Func visit) const { in_order(root, visit); }

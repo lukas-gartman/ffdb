@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "../src/BTree.h"
-#include "../src/FFDB2.h"
+#include "../src/FFDB.h"
 #include "../src/FFDBKey.h"
 #include <fcntl.h>
 

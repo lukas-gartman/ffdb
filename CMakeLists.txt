@@ -4,8 +4,8 @@ project(ffdb)
 set(CMAKE_CXX_STANDARD 20)
 
 set(FFDB_SOURCES
-    src/FFDB2.cpp
-    src/FFDB2.h
+        src/FFDB.cpp
+        src/FFDB.h
     src/Typedefs.cpp
     src/Typedefs.h
     src/BTree.h
