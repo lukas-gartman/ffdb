@@ -43,7 +43,7 @@ else()
     add_executable(ffdb_benchmarks
         benchmarks/main.cpp
         benchmarks/btree_bench.cpp
-        benchmarks/sbt_bench.cpp
+        #benchmarks/sbt_bench.cpp
         ${FFDB_SOURCES}
     )
     target_link_libraries(ffdb_benchmarks benchmark::benchmark pthread)
