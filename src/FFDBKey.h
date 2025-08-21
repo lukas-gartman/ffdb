@@ -114,6 +114,8 @@ public:
     }
 
     template<size_t n> FFDBKey<T>& operator=(const FFDBKey<T> &other) {
+        if (this == &other) return *this;
+
         free_ref();
 
         size = other.size;
