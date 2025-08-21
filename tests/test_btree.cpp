@@ -10,6 +10,22 @@
 #include <random>
 #include <unordered_set>
 
+TEST(BTreeTest, FindTTest) {
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
+    db.start_txn(DB_WRITE_TXN);
+
+    constexpr int t = BTree::find_t<double, char>(4096);
+    EXPECT_EQ((BTree::sizeof_node<double, char>(t)), (sizeof(BTree::Node<double, char, t>)));
+    EXPECT_EQ((BTree::sizeof_node<double, char>(t + 1)), (sizeof(BTree::Node<double, char, t + 1>)));
+    EXPECT_TRUE((BTree::sizeof_node<double, char>(t + 1)) > 4096);
+
+    db.commit_txn();
+
+    remove("test.db");
+}
+
 TEST(BTreeTest, InsertTest) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
