@@ -7,7 +7,7 @@
 template <int DEGREE>
 static void BTree_Insert(benchmark::State& state) {
     remove("benchmark.db");
-    FFDB db("benchmark.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 1024 * 1024 * 1024 * 1.9);
+    FFDB db("benchmark.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, (Size) 1024 * 1024 * 1024 * 2); // Overflow in expression; result is -2'147'483'648 with type 'int'
     db.start_txn(DB_WRITE_TXN);
 
     BTree::BTree<int, float, DEGREE> tree;
@@ -30,7 +30,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 3)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
@@ -38,7 +38,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 4)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
@@ -46,7 +46,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 5)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
@@ -54,7 +54,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 6)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
@@ -62,7 +62,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 7)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
@@ -70,7 +70,7 @@ BENCHMARK_TEMPLATE(BTree_Insert, 8)
     // ->Arg(1'000)
     // ->Arg(10'000)
     // ->Arg(100'000)
-    ->Arg(1'000'000)
+    ->Arg(10'000'000)
     ->Unit(benchmark::kMillisecond);
     // ->Repetitions(5)
     // ->ReportAggregatesOnly(true);
