@@ -6,7 +6,6 @@
 #include <sys/mman.h>
 #include <cmath>
 #include <map>
-#include <map>
 
 /** \brief Align `bytes` depending on amount.
  *
@@ -16,10 +15,7 @@
  *  @param bytes the bytes to align
  *  @return the aligned bytes
  */
-static Size align_bytes(const Size bytes) {
-    const Size alignment =
-        bytes >= ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
-
+static Size align_bytes(const Size bytes, const Size alignment) {
     return (bytes + alignment - 1) & ~(alignment - 1);
 }
 
@@ -37,7 +33,7 @@ static Size bytes_left_in_page(const Offset offset) {
 
 static Size calc_mem_map_size(const Size init_size) {
     Size new_size =
-            ((init_size + SYSTEM_PAGE_SIZE - 1) / SYSTEM_PAGE_SIZE) * SYSTEM_PAGE_SIZE;
+        ((init_size + SYSTEM_PAGE_SIZE - 1) / SYSTEM_PAGE_SIZE) * SYSTEM_PAGE_SIZE;
 
     if (new_size < MIN_DB_SIZE)
         new_size = MIN_DB_SIZE;
@@ -64,6 +60,13 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
+#ifdef PAGE_BOUNDRY_AWARE
+    Size align = bytes >= ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
+    bytes = align_bytes(bytes, align);
+#else
+    bytes = align_bytes(bytes, SMALL_ALIGNMENT);
+#endif
+
     Offset offset;
 
     // Check if there is a free block cached that can be used.
@@ -83,42 +86,74 @@ Offset FFDB::malloc_internal(Size bytes) {
         return offset;
     }
 
+    // TODO: Any case where there is a free block that is large enough for a node but not correctly aligned?
     // Try finding a fitting block in the block descriptor list.
     auto [new_tree, found_block] = del_bd_tree(writer_state.free_blocks, bytes);
     writer_state.free_blocks = new_tree;
     offset = found_block.ofs;
     if (offset != 0) {
-        if (found_block.size > bytes) {
-            if (writer_state.lf_block.ofs != 0) {
-                writer_state.free_blocks = ins_bd_tree(
-                    writer_state.free_blocks,
-                    writer_state.lf_block
-                );
-            }
-            writer_state.lf_block = {offset + bytes, found_block.size - bytes, found_block.txn_id};
-        }
+        if (found_block.size > bytes)
+            set_lf_block({offset + bytes, found_block.size - bytes, found_block.txn_id});
+
         return offset;
     }
 
-    // The above failed. Get memory from the top.
     if (bytes > mmap_size - writer_state.top)
         resize_map(bytes);
 
-    offset = writer_state.top;
-    writer_state.top += bytes;
+#ifdef PAGE_BOUNDRY_AWARE
+    if (bytes >= ALIGNMENT_THRESHOLD) {
+        auto bytes_left = bytes_left_in_page(writer_state.top);
+
+        // Maybe not obvious: at first glance it may look like we need a specialized resize check here where we check
+        // bytes + bytes_left instead. This is not necessary as bytes and bytes + bytes_left occupies the exact same pages.
+        // We have that bytes == 4096 * amount_of_pages - bytes_left, where bytes_left is the amount of bytes not occupied by
+        // bytes in the last page and amount_of_pages > 1. Hence bytes + bytes_left == amount_of_pages.
+
+        // TODO: What txn_id is appropriate here?
+        Block lo_block = {bytes_left > 0 ? writer_state.top : 0, bytes_left, 0};
+
+        // Block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
+        Size bd_size = sizeof(BlockDescr);
+        if (bytes_left > bd_size + SMALL_ALIGNMENT) {
+            lo_block.ofs += bd_size;
+            lo_block.size -= bd_size;
+
+            writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, lo_block);
+            bytes_left -= bd_size; // Update bytes_left because ins_bd_descr updated writer_state.top.
+            lo_block = {0, 0, 0};
+        }
+
+        writer_state.top += bytes_left;
+        offset = writer_state.top;
+        writer_state.top += bytes;
+
+        // lo_block exists and has not been inserted yet.
+        if (lo_block.ofs > 0) set_lf_block(lo_block);
+    }
+    else {
+#endif
+        offset = writer_state.top;
+        writer_state.top += bytes;
+#ifdef PAGE_BOUNDRY_AWARE
+    }
+#endif
 
     return offset;
 }
 
-void FFDB::free_internal(Offset obj, Size bytes) {
+void FFDB::free_internal(Offset offset, Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
-    if (obj == 0) return;
+    if (offset == 0) return;
 
-    Size txn_id = (obj >= shared_state->top) ? 0 : shared_state->curr_txn_id;
+    Size align = bytes > ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
+    bytes = align_bytes(bytes, align);
 
-    if (txn_id == 0 && obj + bytes == writer_state.top) {
+    Size txn_id = (offset >= shared_state->top) ? 0 : shared_state->curr_txn_id;
+
+    if (txn_id == 0 && offset + bytes == writer_state.top) {
         writer_state.top -= bytes;
 
         if (writer_state.lf_block.ofs != 0 &&
@@ -134,15 +169,15 @@ void FFDB::free_internal(Offset obj, Size bytes) {
     if (writer_state.lf_block.ofs != 0) {
         // Merge with lf_block is adjacent.
         const bool lf_block_is_before =
-                writer_state.lf_block.ofs + writer_state.lf_block.size == obj;
+                writer_state.lf_block.ofs + writer_state.lf_block.size == offset;
         const bool lf_block_is_after =
-                obj + bytes == writer_state.lf_block.ofs;
+                offset + bytes == writer_state.lf_block.ofs;
 
         if ((lf_block_is_before || lf_block_is_after) &&
             writer_state.lf_block.txn_id == txn_id) {
 
             writer_state.lf_block.size += bytes;
-            if (lf_block_is_after) writer_state.lf_block.ofs = obj;
+            if (lf_block_is_after) writer_state.lf_block.ofs = offset;
 
             return;
         }
@@ -156,7 +191,18 @@ void FFDB::free_internal(Offset obj, Size bytes) {
     // couldn't be merged with the transaction local top. This signifies
     // that the block can be immediately reused if it would be inserted
     // into the blockdescriptor list.
-    writer_state.lf_block = {obj, bytes, txn_id};
+    writer_state.lf_block = {offset, bytes, txn_id};
+}
+
+void FFDB::set_lf_block(Block lf_block) {
+    if (writer_state.lf_block.ofs != 0) {
+        writer_state.free_blocks = ins_bd_tree(
+            writer_state.free_blocks,
+            writer_state.lf_block
+        );
+    }
+
+    writer_state.lf_block = lf_block;
 }
 
 Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<BlockDescr> right) {
@@ -168,7 +214,7 @@ Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<Blo
                 writer_state.unused_descrs->next_unused;
     }
     else {
-        const Size bytes = align_bytes(sizeof(BlockDescr));
+        const Size bytes = align_bytes(sizeof(BlockDescr), SMALL_ALIGNMENT);
 
         if (bytes > shared_state->mmap_size - writer_state.top)
             resize_map(bytes);

@@ -120,6 +120,28 @@ TEST(AllocatorTest, TestFreeLFBlock) {
     remove("test.db");
 }
 
+TEST(AllocatorTest, LargeAlignmentTest) {
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+
+    db.start_txn(DB_WRITE_TXN);
+    // Will be put in the second page because of the first SMALL_ALIGNMENT bytes being reserved for nullref. Hence we
+    // should have SYSTEM_PAGE_SIZE - SMALL_ALIGNMENT bytes left in the first page.
+    auto size1 = LARGE_ALIGNMENT;
+    auto size2 = size1 - SMALL_ALIGNMENT - sizeof(BlockDescr);
+    const Ref<uint8_t> arr1 = db.malloc<uint8_t>(size1);
+    for (int i = 0; i < size1; i++) arr1[i] = 0xFF;
+
+    const Ref<uint8_t> arr2 = db.malloc<uint8_t>(size2);
+    for (int i = 0; i < size2; i++) arr2[i] = 0xEE;
+
+    for (int i = 0; i < size2; i++) EXPECT_EQ(arr2[i], 0xEE);
+    for (int i = size2; i < size1 + size2; i++) EXPECT_EQ(arr2[i], 0xFF);
+
+    db.commit_txn();
+
+    remove("test.db");
+}
+
 // Test rollback: Do all kinds of operations and commit, do all kinds of operations and rollback. Verify that
 // The first transaction is intact and the second transaction is rolled back.
 

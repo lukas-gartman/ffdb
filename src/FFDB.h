@@ -138,8 +138,9 @@ private:
 
     // Allocation related functions
     Offset malloc_internal(Size bytes);
-    void free_internal(Offset obj, Size bytes);
+    void free_internal(Offset offset, Size bytes);
 
+    void set_lf_block(Block lf_block);
     Ref<BlockDescr> new_block_descr(Block block, Ref<BlockDescr> left = 0, Ref<BlockDescr> right = 0);
     Ref<BlockDescr> upd_bd_tree_node(Ref<BlockDescr> tree, Ref<BlockDescr> left, Ref<BlockDescr> right);
     Ref<BlockDescr> ins_bd_tree(Ref<BlockDescr> tree, Block block);

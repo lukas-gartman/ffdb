@@ -7,6 +7,8 @@
 
 class FFDB;
 
+#define PAGE_BOUNDRY_AWARE
+
 extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
 extern __thread FFDB *_current_db __attribute__((tls_model("initial-exec")));
 inline FFDB *current_db() {
@@ -27,7 +29,7 @@ typedef size_t Id;
  *
  *  \see MemoryMapping
  */
-const Size SYSTEM_PAGE_SIZE = sysconf(_SC_PAGESIZE);
+const Size SYSTEM_PAGE_SIZE = 4096;
 
 /** \brief The cache line size on the system.
  *
