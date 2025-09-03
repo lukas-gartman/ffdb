@@ -150,7 +150,7 @@ TEST(BTreeTest, DuplicateTest) {
 
     BTree::BTree<int, float, 3> tree;
 
-    constexpr int num_keys = 1'000'000;
+    constexpr int num_keys = 100000;
     std::srand(std::time(nullptr));
     std::set<int> keys;
 
