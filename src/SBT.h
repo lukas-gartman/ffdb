@@ -23,7 +23,7 @@ public:
         : key(k), value(v), left(Ref<Node>::null()), right(Ref<Node>::null()), txn_id(txn_id), size(1) {}
 };
 
-template <Comparable T, typename V>
+template <PrimitiveVal T, typename V>
 class SBT {
     Ref<Node<T, V>> root;
     int _size;

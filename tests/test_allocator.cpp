@@ -15,8 +15,8 @@ TEST(AllocatorTest, TestAllocFreeTop) {
     db.start_txn(DB_WRITE_TXN);
 
     // Calculate how many uint64_t values can fit into a single page and compensate for alignment.
-    const size_t elem_size = sizeof(uint64_t) <= SMALL_ALIGNMENT ? SMALL_ALIGNMENT : sizeof(uint64_t);
-    const size_t data_size = (SYSTEM_PAGE_SIZE / elem_size - 1) - SMALL_ALIGNMENT;
+    const size_t elem_size = sizeof(uint64_t) <= db.conf.small_align ? db.conf.small_align : sizeof(uint64_t);
+    const size_t data_size = (db.conf.sys_page_size / elem_size - 1) - db.conf.small_align;
     Ref<uint64_t> values1[data_size];
 
     // Check if the memory contains the correct values.
@@ -50,9 +50,9 @@ TEST(AllocatorTest, TestArrayNotation) {
 
     db.start_txn(DB_WRITE_TXN);
 
-    const size_t arr1_size = SYSTEM_PAGE_SIZE / 4 - SMALL_ALIGNMENT; // Compensate for null ref
-    const size_t arr2_size = (SYSTEM_PAGE_SIZE / 4) / sizeof(uint16_t);
-    const size_t arr3_size = (SYSTEM_PAGE_SIZE / 2) / sizeof(uint32_t);
+    const size_t arr1_size = db.conf.sys_page_size / 4 - db.conf.small_align; // Compensate for null ref
+    const size_t arr2_size = (db.conf.sys_page_size / 4) / sizeof(uint16_t);
+    const size_t arr3_size = (db.conf.sys_page_size / 2) / sizeof(uint32_t);
 
     // Fill 4 byte arrays of different sizes and verify their contents are correct.
     const Ref<uint8_t> arr1 = db.malloc<uint8_t>(arr1_size);
@@ -84,12 +84,12 @@ TEST(AllocatorTest, TestFreeLFBlock) {
 
     db.start_txn(DB_WRITE_TXN);
 
-    const size_t arr1_size = SMALL_ALIGNMENT;
-    const size_t arr2_size = SMALL_ALIGNMENT * 3;
-    const size_t arr3_size = SMALL_ALIGNMENT * 2;
-    const size_t arr4_size = SMALL_ALIGNMENT;
-    const size_t arr5_size = SMALL_ALIGNMENT * 6;
-    const size_t arr6_size = SMALL_ALIGNMENT * 7;
+    const size_t arr1_size = db.conf.small_align;
+    const size_t arr2_size = db.conf.small_align * 3;
+    const size_t arr3_size = db.conf.small_align * 2;
+    const size_t arr4_size = db.conf.small_align;
+    const size_t arr5_size = db.conf.small_align * 6;
+    const size_t arr6_size = db.conf.small_align * 7;
 
     const Ref<uint8_t> arr1 = db.malloc<uint8_t>(arr1_size);
     const Ref<uint8_t> arr2 = db.malloc<uint8_t>(arr2_size);
@@ -126,8 +126,8 @@ TEST(AllocatorTest, LargeAlignmentTest) {
     db.start_txn(DB_WRITE_TXN);
     // Will be put in the second page because of the first SMALL_ALIGNMENT bytes being reserved for nullref. Hence we
     // should have SYSTEM_PAGE_SIZE - SMALL_ALIGNMENT bytes left in the first page.
-    auto size1 = LARGE_ALIGNMENT;
-    auto size2 = size1 - SMALL_ALIGNMENT - sizeof(BlockDescr);
+    auto size1 = db.conf.large_align;
+    auto size2 = size1 - db.conf.small_align - sizeof(BlockDescr);
     const Ref<uint8_t> arr1 = db.malloc<uint8_t>(size1);
     for (int i = 0; i < size1; i++) arr1[i] = 0xFF;
 

@@ -2,6 +2,7 @@
 #define FFDB2_H
 
 #include <cassert>
+#include <optional>
 
 #include "Typedefs.h"
 #include "Synch.h"
@@ -60,8 +61,20 @@ struct Revision {
     Id txn_id;
 };
 
+// TODO: Should make this non-mutable in some way.
+struct DBConf {
+    Size sys_page_size;
+    Size log_page_size;
+    Size small_align;
+    Size large_align;
+    Size align_threshold;
+    Size key_prefix_size;
+    bool page_boundry_aware;
+};
+
 struct SharedState {
     Size mmap_size;
+    DBConf conf;
 
     Id curr_txn_id;
     Id min_txn_id;
@@ -170,7 +183,9 @@ private:
     }
 
 public:
-    FFDB(string filepath, int flags, int mode, Size init_size);
+    FFDB(string filepath, int flags, int mode, Size init_size, std::optional<DBConf> conf = std::nullopt);
+
+    DBConf conf;
 
     template<class A> Ref<A> malloc(Size elem_amount = 1) {
         if (elem_amount == 0) return 0;

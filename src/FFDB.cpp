@@ -15,7 +15,7 @@
  *  @param bytes the bytes to align
  *  @return the aligned bytes
  */
-static Size align_bytes(const Size bytes, const Size alignment) {
+static Size align_bytes(Size bytes, Size alignment) {
     return (bytes + alignment - 1) & ~(alignment - 1);
 }
 
@@ -27,18 +27,8 @@ static Size align_bytes(const Size bytes, const Size alignment) {
  *  @param offset the offset from which to calculate the bytes left in the logical page
  *  @return the bytes left in the logical page
  */
-static Size bytes_left_in_page(const Offset offset) {
-    return LOGICAL_PAGE_SIZE - (offset & (LOGICAL_PAGE_SIZE - 1));
-}
-
-static Size calc_mem_map_size(const Size init_size) {
-    Size new_size =
-        ((init_size + SYSTEM_PAGE_SIZE - 1) / SYSTEM_PAGE_SIZE) * SYSTEM_PAGE_SIZE;
-
-    if (new_size < MIN_DB_SIZE)
-        new_size = MIN_DB_SIZE;
-
-    return new_size;
+static Size bytes_left_in_page(Offset offset, Size log_page_size) {
+    return log_page_size - (offset & (log_page_size - 1));
 }
 
 /** \brief Find the next power of 2 that fits the sum of both arguments.
@@ -60,12 +50,10 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
-#ifdef PAGE_BOUNDRY_AWARE
-    Size align = bytes >= ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
-    bytes = align_bytes(bytes, align);
-#else
-    bytes = align_bytes(bytes, SMALL_ALIGNMENT);
-#endif
+    if (conf.page_boundry_aware)
+        bytes = align_bytes(bytes, bytes >= conf.align_threshold ? conf.large_align : conf.small_align);
+    else
+        bytes = align_bytes(bytes, conf.small_align);
 
     Offset offset;
 
@@ -98,12 +86,10 @@ Offset FFDB::malloc_internal(Size bytes) {
         return offset;
     }
 
-    if (bytes > mmap_size - writer_state.top)
-        resize_map(bytes);
+    if (bytes > mmap_size - writer_state.top) resize_map(bytes);
 
-#ifdef PAGE_BOUNDRY_AWARE
-    if (bytes >= ALIGNMENT_THRESHOLD) {
-        auto bytes_left = bytes_left_in_page(writer_state.top);
+    if (conf.page_boundry_aware && bytes >= conf.align_threshold) {
+        auto bytes_left = bytes_left_in_page(writer_state.top, conf.log_page_size);
 
         // Maybe not obvious: at first glance it may look like we need a specialized resize check here where we check
         // bytes + bytes_left instead. This is not necessary as bytes and bytes + bytes_left occupies the exact same pages.
@@ -115,7 +101,7 @@ Offset FFDB::malloc_internal(Size bytes) {
 
         // Block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
         Size bd_size = sizeof(BlockDescr);
-        if (bytes_left > bd_size + SMALL_ALIGNMENT) {
+        if (bytes_left > bd_size + conf.small_align) {
             lo_block.ofs += bd_size;
             lo_block.size -= bd_size;
 
@@ -132,12 +118,9 @@ Offset FFDB::malloc_internal(Size bytes) {
         if (lo_block.ofs > 0) set_lf_block(lo_block);
     }
     else {
-#endif
         offset = writer_state.top;
         writer_state.top += bytes;
-#ifdef PAGE_BOUNDRY_AWARE
     }
-#endif
 
     return offset;
 }
@@ -148,7 +131,7 @@ void FFDB::free_internal(Offset offset, Size bytes) {
 
     if (offset == 0) return;
 
-    Size align = bytes > ALIGNMENT_THRESHOLD ? LARGE_ALIGNMENT : SMALL_ALIGNMENT;
+    Size align = bytes > conf.align_threshold ? conf.large_align : conf.small_align;
     bytes = align_bytes(bytes, align);
 
     Size txn_id = (offset >= shared_state->top) ? 0 : shared_state->curr_txn_id;
@@ -214,7 +197,7 @@ Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<Blo
                 writer_state.unused_descrs->next_unused;
     }
     else {
-        const Size bytes = align_bytes(sizeof(BlockDescr), SMALL_ALIGNMENT);
+        const Size bytes = align_bytes(sizeof(BlockDescr), conf.small_align);
 
         if (bytes > shared_state->mmap_size - writer_state.top)
             resize_map(bytes);
@@ -501,7 +484,7 @@ void FFDB::resize_map(Size min_size) {
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {
-        if (ftruncate(fd, SYSTEM_PAGE_SIZE + new_size) == -1) {
+        if (ftruncate(fd, conf.sys_page_size + new_size) == -1) {
             shared_state->resize_rw_lock.unlock();
             throw std::runtime_error("Errno: " + std::to_string(errno));
         }
@@ -531,7 +514,7 @@ void FFDB::resize_map(Size min_size) {
     shared_state->resize_rw_lock.unlock();
 }
 
-FFDB::FFDB(std::string filepath, int flags, int mode, Size init_size):
+FFDB::FFDB(std::string filepath, int flags, int mode, Size init_size, std::optional<DBConf> conf):
 pid(getpid()),
 fd(-1),
 mmap_size(0),
@@ -553,41 +536,59 @@ filepath(std::move(filepath)) {
 
     // Initialize file if it was just created.
     if (mmap_size == 0) {
-        mmap_size = calc_mem_map_size(init_size);
+        this->conf = conf.value_or({
+            4096,
+            4096,
+            32,
+            4096,
+            4096,
+            8,
+            true
+        });
+
+        mmap_size = align_bytes(init_size, this->conf.sys_page_size);
+        Size min_size = this->conf.sys_page_size * 2;
+
+        if (mmap_size < min_size) mmap_size = min_size; // Need one page for shared state and one for alloc page at min.
+
         if (ftruncate(fd, mmap_size) == -1) {
             cleanup();
             throw std::runtime_error("Errno: " + std::to_string(errno));
         }
+
         is_new = true;
     }
 
     shared_state = (SharedState *)
         mmap(nullptr, mmap_size, PROT_READ, MAP_SHARED, fd, 0);
 
+    if (!is_new) this->conf = shared_state->conf;
+
     if (shared_state == MAP_FAILED) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    if (mprotect(shared_state, SYSTEM_PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
+    if (mprotect(shared_state, this->conf.sys_page_size, PROT_READ | PROT_WRITE) == -1) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    mmap_size -= SYSTEM_PAGE_SIZE;
-    base = ((unsigned char *) shared_state) + SYSTEM_PAGE_SIZE;
+    mmap_size -= this->conf.sys_page_size;
+    base = ((unsigned char *) shared_state) + this->conf.sys_page_size;
 
     if (is_new) {
         shared_state->mmap_size = mmap_size;
+        shared_state->conf = this->conf;
 
         shared_state->curr_txn_id = 1;
-        shared_state->min_txn_id = 1;
+        shared_state->min_txn_id = 1; // TODO: Noone uses a revision yet. Should this be +inf?
 
         shared_state->write_lock.init();
         shared_state->rev_lock.init();
         shared_state->resize_rw_lock.init();
 
-        shared_state->top = SMALL_ALIGNMENT; // 0 is null
+        shared_state->top = this->conf.small_align; // 0 is null
 
         // The rest is zeroed by ftruncate
     }
@@ -623,7 +624,8 @@ Revision *FFDB::register_revision(Offset root, Id txn_id) {
 
     if (!found) {
         if (found_rev == nullptr) {
-            size_t max_revisions = (LOGICAL_PAGE_SIZE - sizeof(SharedState)) / sizeof(Revision);
+            // TODO: Am I sure about sys instead of log?
+            size_t max_revisions = (conf.sys_page_size - sizeof(SharedState)) / sizeof(Revision);
             if (shared_state->revision_count >= max_revisions) {
                 shared_state->rev_lock.unlock();
                 throw std::runtime_error("No more revisions available");
