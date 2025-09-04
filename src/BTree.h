@@ -713,6 +713,22 @@ public:
         return root == REF_NULL ? REF_NULL : search(root, key);
     }
 
+    template <ValidKeyArg<T> K>
+    std::optional<V> get_value(const K &key) {
+        auto node = search(key);
+
+        if (node == REF_NULL) return std::nullopt;
+
+        // Find the key in the node
+        int i = 0;
+        while (i < node->n && node->key_values[i].key != key) ++i;
+
+        auto val = node->key_values[i].value;
+
+        if (std::holds_alternative<V>(val)) return std::get<V>(val);
+        if (std::holds_alternative<Ref<V>>(val)) return *std::get<Ref<V>>(val);
+    }
+
     /**
     * \brief Inserts a key-value pair into the B-Tree.
     * \details This function inserts a key-value pair into the B-Tree, ensuring that the tree maintains
