@@ -35,8 +35,6 @@ private:
     bool is_leaf;
 
     Node(Id txn_id, int n, bool is_leaf): txn_id(txn_id), n(n), is_leaf(is_leaf) {}
-    Node(KeyValue<T, V> key_values[], Ref<Node> children[], Id txn_id, int n, bool is_leaf):
-        key_values(key_values), children(children), txn_id(txn_id), n(n), is_leaf(is_leaf) {}
 
 public:
     friend class BTree<T, V, t>;
@@ -50,6 +48,7 @@ class BTreeHeader {
 private:
     NodeRef<T, V, t> root;
     int size;
+
 public:
     friend class BTree<T, V, t>;
 };
@@ -63,13 +62,13 @@ private:
     static NodeRef<T, V, t> create_node(bool is_leaf) {
 
         auto node = current_db()->malloc<Node<T, V, t>>();
-        new (&*node) Node<T, V, t>(current_db()->get_txn_id(), is_leaf, 0);
+        new (&*node) Node<T, V, t>(current_db()->get_txn_id(), 0, is_leaf);
 
         for (int i = 0; i < kv_size<t>; ++i) {
             node->key_values[i].key = T();
             node->children[i] = REF_NULL;
         }
-        node->children[kv_size<t>] = REF_NULL;
+        node->children[chld_size<t> - 1] = REF_NULL;
 
         return node;
     }
@@ -177,7 +176,7 @@ private:
         ++i; // Increment i to find the child
 
         // Split the child if it is full
-        if (x->children[i]->n == chld_size<t>) {
+        if (x->children[i]->n == chld_size<t> - 1) {
             x = split_child(upd_node(x), i);
 
             // Determine which of the two children to insert the new key into
@@ -185,8 +184,8 @@ private:
         }
 
         // Insert the new key into the appropriate child
-        auto [chld, collision] = insert_non_full(x->children[i], key, value);
-        x->children[i] = chld;
+        auto [child, collision] = insert_non_full(x->children[i], key, value);
+        x->children[i] = child;
         return std::make_pair(x, collision);
     }
 
@@ -203,10 +202,10 @@ private:
     template <PrimitiveVal T, typename V, int t>
     static KeyValue<T, V> get_in_order_successor(NodeRef<T, V, t> node, int i) {
         // Find the leftmost child of the right child
-        NodeRef current = node->children[i + 1];
-        while (!current->is_leaf) {
+        auto current = node->children[i + 1];
+        while (!current->is_leaf)
             current = current->children[0];
-        }
+
         return current->key_values[0];
     }
 
@@ -443,11 +442,11 @@ public:
     BTreeFunctional() = delete;
 
     template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
-    static BTreeHeader<T, V, t> insert(BTreeHeader<T, V, k> btree, const K &key, V value) {
-        if (btree.root == REF_NULL) {
+    static BTreeHeader<T, V, t> insert(BTreeHeader<T, V, t> btree, const K &key, V value) {
+        if (btree->root == REF_NULL) {
             auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
 
-            new_btree->root = create_node(true);
+            new_btree->root = create_node<T, V, t>(true);
             new_btree->root->key_values[0].key = key;
             new_btree->root->key_values[0].value = value;
             new_btree->root->n = 1;
@@ -462,37 +461,37 @@ public:
         // Check if the root is full and needs to be split
         if (btree->root->n == 2 * t - 1) {
             // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
-            bool key_exists = false; // TODO: CHECK THAT HERE
+            if (find_node(btree->root, key) != REF_NULL) return btree;
 
-            if (key_exists) return btree;
-// TODO: Fix the below
-            /*NodeRef<T, V, t> new_root = create_node(false);
+            auto new_root = create_node<T, V, t>(false);
             new_root->children[0] = btree->root; // Make the old root a child of the new root
-            root = s;
-            split_child(s, 0); // Splits old root and moves its middle key up to the new root
-            bool inserted = insert_non_full(s, key, value);
-            if (!inserted) {
-                NodeRef old_root = s->children[0];
-                free_node(s);
-                root = old_root;
-            }*/
-        }
-        /*else {
-            NodeRef old_root = root;
 
-            // Copy-on-write
-            if (current_db()->get_txn_id() != root->txn_id) {
-                root = copy_node(root);
-            }
+            //btree->root = new_root;
+            // Splits old root and moves its middle key up to the new root
+            new_root = insert_non_full(split_child(upd_node(new_root), 0), key, value).first;
 
-            bool inserted = insert_non_full(root, key, value);
-            if (!inserted && root->txn_id == current_db()->get_txn_id()) {
-                free_node(root);
-                root = copy_node(old_root);
-            }
+            auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+
+            new_btree->root = new_root;
+            new_btree->size = btree->size + 1;
+
+            current_db()->free(btree);
+
+            return new_btree;
         }
 
-        return *this;*/
+        auto [new_root, inserted] = insert_non_full(upd_node(btree->root), key, value);
+
+        if (!inserted) return btree;
+
+        auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+
+        new_btree->root = new_root;
+        new_btree->size = btree->size + 1;
+
+        current_db()->free(btree);
+
+        return new_btree;
     }
 
     template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
