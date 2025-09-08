@@ -30,10 +30,12 @@ class FFDBKey;
 
 // Ancient Mesopotamian programancy.
 template <typename U, typename T>
-concept ValidKeyArg = std::same_as<std::remove_cvref_t<U>, T>                  // Allow T
-        || std::same_as<std::remove_cvref_t<U>, FFDBKey<T>>                    // Allow FFDBKey<T>
-        || (std::is_array_v<std::remove_cvref_t<U>>                            // Allow T[n]
-            && std::same_as<std::remove_extent_t<std::remove_cvref_t<U>>, T>);
+concept ValidKeyArg = std::same_as<std::remove_cvref_t<U>, T>                 // T, T&, T&&
+    || std::same_as<std::remove_cvref_t<U>, FFDBKey<T>>                       // FFDBKey<T>, FFDBKey<T>&, ...
+    || (std::is_array_v<std::remove_cvref_t<U>>
+        && std::same_as<std::remove_extent_t<std::remove_cvref_t<U>>, T>)     // T[n]
+    || (std::same_as<T, char>
+        && std::same_as<std::remove_cvref_t<U>, std::string>);                // std::string, std::string&, ... when T=char
 
 template <class A> class Ref {
 private:

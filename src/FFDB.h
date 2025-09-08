@@ -219,6 +219,11 @@ public:
         return root_cpy;
     }
 
+    template<class A>
+    Ref<A> get_txn_root() {
+        return shared_state->active_txn_root;
+    }
+
     Id get_txn_id() const {
         return shared_state->curr_txn_id;
     }

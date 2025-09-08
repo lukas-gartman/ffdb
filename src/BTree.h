@@ -139,6 +139,7 @@ private:
      * \return A Ref to the newly created node.
      */
     NodeRef create_node(bool is_leaf) {
+        // TODO: Something is not updated when mmap is resized so this tree can't be found anymore.
         NodeRef node = current_db()->malloc<Node<T, V, t>>();
         new (&*node) Node<T, V, t>();
         node->is_leaf = is_leaf;
@@ -689,6 +690,24 @@ private:
         }
     }
 
+    void print_node_deluxe(NodeRef node, const std::string &path) {
+        if (node == REF_NULL) { return; }
+
+        int i;
+        std::cout << path << ": " << std::endl;
+        for (i = 0; i < node->n; i++) {
+            std::visit([node, i](auto&& val) {
+                std::cout << "    node" << i << ": " << node->key_values[i].key << ": " << val << std::endl;
+            }, node->key_values[i].value);
+        }
+
+        for (i = 0; i <= node->n; i++) {
+            if (!node->is_leaf) {
+                print_node_deluxe(node->children[i], path + "->" + std::to_string(i));
+            }
+        }
+    }
+
 public:
     /**
      * \brief Constructs a BTree with a given allocator.
@@ -752,6 +771,7 @@ public:
 
         // Check if the root is full and needs to be split
         if (root->n == 2*t - 1) {
+            // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
             NodeRef s = create_node(false);
             s->children[0] = root; // Make the old root a child of the new root
             root = s;
@@ -897,6 +917,13 @@ public:
     void print() {
         if (root) {
             print_node(root, std::string("Root"));
+            std::cout << std::endl;
+        }
+    }
+
+    void print_tree() {
+        if (root) {
+            print_node_deluxe(root, std::string("Root"));
             std::cout << std::endl;
         }
     }

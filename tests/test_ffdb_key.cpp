@@ -6,6 +6,20 @@
 #include <cstring>
 #include <fcntl.h>
 
+TEST(FFDBKeyTest, TESTETS) {
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
+    db.start_txn(DB_WRITE_TXN);
+
+    FFDBKey<char> k1(std::string("abc"));
+
+    std::cout << (k1 == "abc") << std::endl;
+
+    db.commit_txn();
+    remove("test.db");
+}
+
 TEST(FFDBKeyTest, CpyTestInt) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);

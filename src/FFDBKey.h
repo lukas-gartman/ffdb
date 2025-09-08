@@ -23,13 +23,12 @@ public:
     size_t size;
     std::variant<T, LargeKey> key_storage;
 
-    FFDBKey() : key_storage(T{}) {}
+    FFDBKey() : size(0), key_storage(T{}) {}
 
-    template<size_t n>
-    FFDBKey(const T (&key)[n]) {
-        size = sizeof(T) * n;
+    FFDBKey(const T *key, Size n) {
+        size = n * sizeof(T);
 
-        if (n == 1 && size <= PREFIX_SIZE) key_storage = key[0];
+        if (n == 1 && size <= PREFIX_SIZE) key_storage = *key;
         else {
             LargeKey lk;
             std::memcpy(lk.key_prefix, key, std::min(PREFIX_SIZE, size));
@@ -44,10 +43,23 @@ public:
         }
     }
 
-    // Syntax jiu jitsu.
-    FFDBKey(const T &key): FFDBKey((const T[1]) {key}) {}
+    template<size_t n>
+    FFDBKey(const T (&key)[n]): FFDBKey(key, n) {}
 
-    static int cmp(const FFDBKey<T> &key, const FFDBKey<T> &other) {
+    FFDBKey(const std::string &key): FFDBKey(key.c_str(), key.length() + 1) {}
+
+    FFDBKey(const T &key): FFDBKey(&key, 1) {}
+
+    void free_ref() {
+        if (std::holds_alternative<LargeKey>(key_storage)) {
+            Ref<std::byte> ref = std::get<LargeKey>(key_storage).key_ref;
+            if (ref == 0) return; // No extra data was needed
+
+            current_db()->free(ref, size - PREFIX_SIZE);
+        }
+    }
+
+    static int cmp(const FFDBKey &key, const FFDBKey &other) {
         if (key.size != other.size)
             return key.size < other.size ? -1 : 1;
 
@@ -67,24 +79,22 @@ public:
         if (p_cmp != 0) return p_cmp;
 
         if (key.size > PREFIX_SIZE)
-            return memcmp(lk1.key_ref, lk2.key_ref, key.size - PREFIX_SIZE);;
+            return memcmp(lk1.key_ref, lk2.key_ref, key.size - PREFIX_SIZE);
 
         return 0;
     }
 
-    template<size_t n>
-    static int cmp(const FFDBKey<T> &key, const T(&other)[n]) {
-        Size other_size = sizeof(T) * n;
-        if (key.size < other_size)
+    static int cmp(const FFDBKey &key, const T* other, Size other_n) {
+        Size other_size = other_n * sizeof(T);
+        if (key.size != other_size)
             return key.size < other_size ? -1
                  : key.size > other_size ? 1
                  : 0;
 
-        // If this holds n is guaranteed to be 1 because the if above.
         if (std::holds_alternative<T>(key.key_storage)) {
             const T &sk = std::get<T>(key.key_storage);
-            return sk < other[0] ? -1
-                 : sk > other[0] ? 1
+            return sk < *other ? -1
+                 : sk > *other ? 1
                  : 0;
         }
 
@@ -94,99 +104,96 @@ public:
         if (p_cmp != 0) return p_cmp;
 
         if (key.size > PREFIX_SIZE)
-            return memcmp(lk.key_ref, ((const std::byte*) other) + PREFIX_SIZE, key.size - PREFIX_SIZE);;
+            return memcmp(lk.key_ref, ((const std::byte*) other) + PREFIX_SIZE, key.size - PREFIX_SIZE);
 
         return 0;
     }
 
-    static int cmp(const FFDBKey<T> &key, const T &other) {
-        T arr[1] = { other };
-        return cmp(key, arr);
+    template<size_t n>
+    static int cmp(const FFDBKey &key, const T(&other)[n]) {
+        return cmp(key, other, n);
     }
 
-    void free_ref() {
-        if (std::holds_alternative<LargeKey>(key_storage)) {
-            Ref<std::byte> ref = std::get<LargeKey>(key_storage).key_ref;
-            if (ref == 0) return; // No extra data was needed
-
-            current_db()->free(ref, size - PREFIX_SIZE);
-        }
+    static int cmp(const FFDBKey &key, const T &other) {
+        return cmp(key, &other, 1);
     }
 
-    template<size_t n> FFDBKey<T>& operator=(const FFDBKey<T> &other) {
-        if (this == &other) return *this;
-
-        free_ref();
-
-        size = other.size;
-        key_storage = other.key_storage;
-
-        return *this;
-    }
-
-    template<size_t n> FFDBKey<T>& operator=(const T(&other)[n]) {
-        FFDBKey<T> tmp(other);
+    template<size_t n> FFDBKey& operator=(const T(&other)[n]) {
+        FFDBKey tmp(other);
         *this = tmp;
         return *this;
     }
 
-    template<size_t n> FFDBKey<T>& operator=(const T &other) {
-        FFDBKey<T> tmp(other);
+    FFDBKey& operator=(const T &other) {
+        FFDBKey tmp(other);
         *this = tmp;
         return *this;
     }
 
-    // Boilerplate from hell.
-    bool operator==(const FFDBKey<T> &other) const { return cmp(*this, other) == 0; }
-    bool operator!=(const FFDBKey<T> &other) const { return cmp(*this, other) != 0; }
-    bool operator>=(const FFDBKey<T> &other) const { return cmp(*this, other) >= 0; }
-    bool operator<=(const FFDBKey<T> &other) const { return cmp(*this, other) <= 0; }
-    bool operator> (const FFDBKey<T> &other) const { return cmp(*this, other) > 0; }
-    bool operator< (const FFDBKey<T> &other) const { return cmp(*this, other) < 0; }
+    auto operator<=>(const FFDBKey<T>& other) const {
+        return cmp(*this, other);
+    }
 
-    template<size_t n> bool operator==(const T(&other)[n]) const { return cmp(*this, other) == 0; }
-    template<size_t n> bool operator!=(const T(&other)[n]) const { return cmp(*this, other) != 0; }
-    template<size_t n> bool operator>=(const T(&other)[n]) const { return cmp(*this, other) >= 0; }
-    template<size_t n> bool operator<=(const T(&other)[n]) const { return cmp(*this, other) <= 0; }
-    template<size_t n> bool operator> (const T(&other)[n]) const { return cmp(*this, other) > 0; }
-    template<size_t n> bool operator< (const T(&other)[n]) const { return cmp(*this, other) < 0; }
+    bool operator==(const FFDBKey<T>& other) const {
+        return cmp(*this, other) == 0;
+    }
 
-    bool operator==(const T &other) const { return cmp(*this, other) == 0; }
-    bool operator!=(const T &other) const { return cmp(*this, other) != 0; }
-    bool operator>=(const T &other) const { return cmp(*this, other) >= 0; }
-    bool operator<=(const T &other) const { return cmp(*this, other) <= 0; }
-    bool operator> (const T &other) const { return cmp(*this, other) > 0; }
-    bool operator< (const T &other) const { return cmp(*this, other) < 0; }
+    template<size_t n>
+    auto operator<=>(const T(&other)[n]) const {
+        return cmp(*this, other, n);
+    }
 
-    friend std::ostream &operator<<(std::ostream &os, const FFDBKey<T> &key) {
-        if (std::holds_alternative<T>(key.key_storage)) {
+    template<size_t n>
+    bool operator==(const T(&other)[n]) const {
+        return cmp(*this, other, n) == 0;
+    }
+
+    auto operator<=>(const T& other) const {
+        return cmp(*this, other);
+    }
+
+    bool operator==(const T& other) const {
+        return cmp(*this, other) == 0;
+    }
+
+    auto operator<=>(const std::string& other) const {
+        return cmp(*this, other.c_str(), other.length() + 1);
+    }
+
+    bool operator==(const std::string& other) const {
+        return cmp(*this, other.c_str(), other.length() + 1) == 0;
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const FFDBKey &key) {
+        if (std::holds_alternative<T>(key.key_storage))
             os << std::get<T>(key.key_storage);
-        } else {
-            const auto& lk = std::get<typename FFDBKey<T>::LargeKey>(key.key_storage);
-            os << "[";
-            const std::byte* data = &*lk.key_ref;
-            for (size_t i = 0; i < key.size; ++i) {
-                os << std::hex << std::to_integer<int>(data[i]) << " ";
+        else {
+            const auto& lk = std::get<LargeKey>(key.key_storage);
+
+            T* result = new T[key.size / sizeof(T)];
+
+            std::memcpy(result, lk.key_prefix, PREFIX_SIZE);
+            if (key.size > PREFIX_SIZE) std::memcpy(result + PREFIX_SIZE, lk.key_ref, key.size - PREFIX_SIZE);
+
+            if constexpr (std::is_same_v<T, char>) {
+                os << "\"";
+                for (size_t i = 0; i < key.size -1; ++i) {
+                    os << result[i];
+                }
+                os << "\"";
             }
-            os << "]";
+            else {
+                os << "[";
+                for (size_t i = 0; i < key.size / sizeof(T); ++i) {
+                    os << result[i];
+
+                    if (i != (key.size / sizeof(T)) - 1) os << " ";
+                }
+                os << "]";
+            }
         }
         return os;
     }
 };
-
-// Boilerplate hell the sequel
-template<PrimitiveVal T, size_t n> bool operator==(const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) == 0; }
-template<PrimitiveVal T, size_t n> bool operator!=(const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) != 0; }
-template<PrimitiveVal T, size_t n> bool operator>=(const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) <= 0; }
-template<PrimitiveVal T, size_t n> bool operator<=(const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) >= 0; }
-template<PrimitiveVal T, size_t n> bool operator> (const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) < 0; }
-template<PrimitiveVal T, size_t n> bool operator< (const T(&other)[n], const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) > 0; }
-
-template<PrimitiveVal T> bool operator==(const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) == 0; }
-template<PrimitiveVal T> bool operator!=(const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) != 0; }
-template<PrimitiveVal T> bool operator>=(const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) <= 0; }
-template<PrimitiveVal T> bool operator<=(const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) >= 0; }
-template<PrimitiveVal T> bool operator> (const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) < 0; }
-template<PrimitiveVal T> bool operator< (const T &other, const FFDBKey<T> &key) { return FFDBKey<T>::cmp(key, other) > 0; }
 
 #endif //FFDBKEY_H

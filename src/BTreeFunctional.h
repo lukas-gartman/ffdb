@@ -1,0 +1,526 @@
+// A B-Tree using CLRS's definition
+// Introduction to Algorithms 3rd Edition (ISBN-10 978-0-262-03384-8)
+#ifndef BTREE_FUNCTIONAL_H
+#define BTREE_FUNCTIONAL_H
+
+#include <algorithm>
+#include "FFDB.h"
+#include "FFDBKey.h"
+#include "Typedefs.h"
+
+template <PrimitiveVal T, typename V, int t>
+class BTree;
+
+template <PrimitiveVal T, typename V, int t>
+class Node;
+
+#define REF_NULL Ref<Node<T, V, t>>::null()
+
+template <PrimitiveVal T, typename V>
+struct KeyValue {
+    FFDBKey<T> key;
+    Ref<V>  value;
+};
+
+template <int t> constexpr int chld_size = 2 * t;
+template <int t> constexpr int kv_size = chld_size<t> - 1;
+
+template <PrimitiveVal T, typename V, int t>
+class Node {
+private:
+    KeyValue<T, V> key_values[kv_size<t>];
+    Ref<Node> children[chld_size<t>];
+    Id txn_id;
+    int n; // Number of keys in the node
+    bool is_leaf;
+
+    Node(Id txn_id, int n, bool is_leaf): txn_id(txn_id), n(n), is_leaf(is_leaf) {}
+    Node(KeyValue<T, V> key_values[], Ref<Node> children[], Id txn_id, int n, bool is_leaf):
+        key_values(key_values), children(children), txn_id(txn_id), n(n), is_leaf(is_leaf) {}
+
+public:
+    friend class BTree<T, V, t>;
+};
+
+template <PrimitiveVal T, typename V, int t>
+using NodeRef = Ref<Node<T, V, t>>;
+
+template <PrimitiveVal T, typename V, int t>
+class BTreeHeader {
+private:
+    NodeRef<T, V, t> root;
+    int size;
+public:
+    friend class BTree<T, V, t>;
+};
+
+template <PrimitiveVal T, typename V, int t>
+using BTreeRef = Ref<BTreeHeader<T, V, t>>;
+
+class BTreeFunctional {
+private:
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> create_node(bool is_leaf) {
+
+        auto node = current_db()->malloc<Node<T, V, t>>();
+        new (&*node) Node<T, V, t>(current_db()->get_txn_id(), is_leaf, 0);
+
+        for (int i = 0; i < kv_size<t>; ++i) {
+            node->key_values[i].key = T();
+            node->children[i] = REF_NULL;
+        }
+        node->children[kv_size<t>] = REF_NULL;
+
+        return node;
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static void free_node(NodeRef<T, V, t> node) {
+        current_db()->free(node);
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> upd_node(NodeRef<T, V, t> node) {
+        if (node->txn_id == current_db()->get_txn_id())
+            return node;
+
+        auto new_node = current_db()->malloc<Node<T, V, t>>();
+        new (&*new_node) Node<T, V, t>(*node);
+        new_node->txn_id = current_db()->get_txn_id();
+
+        free_node(node);
+        return new_node;
+    }
+
+    // Originally search
+    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    static NodeRef<T, V, t> find_node(NodeRef<T, V, t> x, const K &key) {
+        // Find the index of the first key greater than or equal to key
+        int i = 0;
+        while (i < x->n && key > x->key_values[i].key) i++;
+
+        return i < x->n && key == x->key_values[i].key
+            ? x                               // Key found
+            : x->is_leaf ? REF_NULL           // Key not found
+            : find_node(x->children[i], key); // Search in the child
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> split_child(NodeRef<T, V, t> x, int i) {
+        NodeRef y = upd_node(x->children[i]);
+        NodeRef z = create_node(y->is_leaf);
+        z->n = t - 1;
+
+        // Copy the last t - 1 keys of y to z
+        for (int j = 0; j < t - 1; j++)
+            z->key_values[j] = y->key_values[j + t];
+
+        // Copy the last t children of y to z
+        if (!y->is_leaf) {
+            for (int j = 0; j < t; j++)
+                z->children[j] = y->children[j + t];
+        }
+
+        // Store the middle key before reducing y's size
+        auto middle_kv = y->key_values[t - 1];
+
+        // Reduce the number of keys in y
+        y->n = t - 1;
+
+        // Make room for the new child in x
+        for (int j = x->n; j >= i + 1; --j)
+            x->children[j + 1] = x->children[j];
+
+        // Insert the new child into x
+        x->children[i + 1] = z;
+
+        // Make room for the new key in x
+        for (int j = x->n - 1; j >= i; --j)
+            x->key_values[j + 1] = x->key_values[j];
+
+        // Insert the middle key of y into x
+        x->key_values[i] = middle_kv;
+        ++x->n;
+
+        return x;
+    }
+
+    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    static std::pair<NodeRef<T, V, t>, bool> insert_non_full(NodeRef<T, V, t> x, const K &key, V value) {
+        // Find the position to insert the new key, starting from the right
+        int i = x->n - 1;
+
+        if (x->is_leaf) {
+            // Check if the key already exists
+            for (int j = 0; j < x->n; ++j) {
+                if (x->key_values[j].key == key) return std::make_pair(x, false); // Key already exists, do not insert
+            }
+
+            x = upd_node(x);
+
+            // Shift keys to the right to make room for the new key
+            while (i >= 0 && key < x->key_values[i].key) {
+                x->key_values[i + 1] = x->key_values[i];
+                --i;
+            }
+
+            // Insert the new key
+            x->key_values[i + 1].key = FFDBKey<T>(key);
+            x->key_values[i + 1].value = value;
+            x->n = x->n + 1;
+
+            return std::make_pair(x, true);
+        }
+
+        // Find the child to insert the new key
+        while (i >= 0 && key < x->key_values[i].key) --i;
+        ++i; // Increment i to find the child
+
+        // Split the child if it is full
+        if (x->children[i]->n == chld_size<t>) {
+            x = split_child(upd_node(x), i);
+
+            // Determine which of the two children to insert the new key into
+            if (key > x->key_values[i].key) ++i;
+        }
+
+        // Insert the new key into the appropriate child
+        auto [chld, collision] = insert_non_full(x->children[i], key, value);
+        x->children[i] = chld;
+        return std::make_pair(x, collision);
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static KeyValue<T, V> get_in_order_predecessor(NodeRef<T, V, t> node, int i) {
+        // Find the rightmost child of the left child
+        auto current = node->children[i];
+        while (!current->is_leaf)
+            current = current->children[current->n];
+
+        return current->key_values[current->n - 1];
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static KeyValue<T, V> get_in_order_successor(NodeRef<T, V, t> node, int i) {
+        // Find the leftmost child of the right child
+        NodeRef current = node->children[i + 1];
+        while (!current->is_leaf) {
+            current = current->children[0];
+        }
+        return current->key_values[0];
+    }
+
+    // parent assumed to be copied
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> merge(NodeRef<T, V, t> parent, int i) {
+        NodeRef child = upd_node(parent->children[i]);
+        parent->children[i] = child;
+
+        NodeRef right_sibling = parent->children[i + 1];
+
+        // Bring down the key from parent
+        child->key_values[t - 1] = parent->key_values[i];
+
+        // Copy the keys from sibling to child
+        for (int j = 0; j < right_sibling->n; ++j) {
+            child->key_values[j + t] = right_sibling->key_values[j];
+        }
+
+        // Copy the children from sibling to child
+        if (!child->is_leaf) {
+            for (int j = 0; j <= right_sibling->n; ++j) {
+                child->children[j + t] = right_sibling->children[j];
+            }
+        }
+
+        // Fill the gap in parent that was created by moving down the key
+        for (int j = i + 1; j < parent->n; ++j) {
+            parent->key_values[j - 1] = parent->key_values[j];
+        }
+
+        // Fill the gap in parent that was created by moving down the child
+        for (int j = i + 2; j <= parent->n; ++j) {
+            parent->children[j - 1] = parent->children[j];
+        }
+
+        // Size is now child and sibling's size together + the key from parent
+        child->n += right_sibling->n + 1;
+        --parent->n;
+
+        free_node(right_sibling);
+
+        return parent;
+    }
+
+    // Parent assumed to be copied
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> move_key_and_child_from_left_sibling(NodeRef<T, V, t> parent, int i) {
+        NodeRef child = upd_node(parent->children[i]);
+        parent->children[i] = child;
+
+        NodeRef left_sibling = upd_node(parent->children[i - 1]);
+        parent->children[i - 1] = left_sibling;
+
+        // Shift keys right to make room for the key that we will take from parent
+        for (int j = child->n - 1; j >= 0; --j) {
+            child->key_values[j + 1] = child->key_values[j];
+        }
+
+        // Shift children right to make room for the child that we will take from sibling
+        if (!child->is_leaf) {
+            for (int j = child->n; j >= 0; --j) {
+                child->children[j + 1] = child->children[j];
+            }
+        }
+
+        // Move the last child of the left sibling to child's first child
+        if (!child->is_leaf) {
+            child->children[0] = left_sibling->children[left_sibling->n];
+        }
+
+        // Bring down the key from parent
+        child->key_values[0] = parent->key_values[i - 1];
+
+        // Move up the key from the sibling to parent
+        parent->key_values[i - 1] = left_sibling->key_values[left_sibling->n - 1];
+
+        // Child gained a key and its left sibling lost one
+        child->n += 1;
+        left_sibling->n -= 1;
+
+        return parent;
+    }
+
+    // Parent assumed to be copied
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> move_key_and_child_from_right_sibling(NodeRef<T, V, t> parent, int i) {
+        NodeRef child = upd_node(parent->children[i]);
+        parent->children[i] = child;
+
+        NodeRef right_sibling = upd_node(parent->children[i + 1]);
+        parent->children[i + 1] = right_sibling;
+
+        // Bring down the key from parent
+        child->key_values[child->n] = parent->key_values[i];
+
+        // Move the first child of right sibling to child's last child
+        if (!child->is_leaf) {
+            child->children[child->n + 1] = right_sibling->children[0];
+        }
+
+        // Move up the first key from the right sibling to parent
+        parent->key_values[i] = right_sibling->key_values[0];
+
+        // Shift keys left to fill the gap in the right sibling
+        for (int j = 1; j < right_sibling->n; ++j) {
+            right_sibling->key_values[j - 1] = right_sibling->key_values[j];
+        }
+
+        // Shift children left to fill the gap in the right sibling
+        if (!right_sibling->is_leaf) {
+            for (int j = 1; j <= right_sibling->n; ++j) {
+                right_sibling->children[j - 1] = right_sibling->children[j];
+            }
+        }
+
+        child->n += 1;
+        right_sibling->n -= 1;
+
+        return parent;
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static NodeRef<T, V, t> rebalance_node(NodeRef<T, V, t> parent, int i) {
+        NodeRef left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
+        NodeRef right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
+
+        // Move a key from an immediate sibling if it has enough keys
+        if (left_sibling && left_sibling->n >= t)
+            // Left sibling has enough keys, move a key from it
+            return move_key_and_child_from_left_sibling(upd_node(parent), i);
+
+        if (right_sibling && right_sibling->n >= t)
+            return move_key_and_child_from_right_sibling(upd_node(parent), i);
+
+        // Neither sibling has enough keys, merge with the right sibling unless we're at the last child
+        if (i != parent->n)
+            return merge(upd_node(parent), i); // Right sibling
+
+        return merge(upd_node(parent), i - 1); // Left sibling
+    }
+
+    // node not assumed to be copied because we don't want to copy if the key is not found.
+    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    static std::pair<NodeRef<T, V, t>, bool> remove(NodeRef<T, V, t> node, const K &key) {
+        // Find the first key greater than or equal to key
+        int i = 0;
+        while (i < node->n && node->key_values[i].key < key) ++i;
+
+        // Key exists in the current node
+        if (i < node->n && node->key_values[i].key == key) {
+            if (node->is_leaf)
+               return remove_from_leaf(upd_node(node), i);
+
+            return remove_from_non_leaf(upd_node(node), i);
+        }
+
+        // Key not found in the current node and node is leaf, key does not exist.
+        if (node->is_leaf) { return std::make_pair(node, false); } // Key not found
+
+        // Key not found in the current node, search in child.
+        auto [child, modified] = remove(node->children[i], key);
+
+        // Key not found in child
+        if (!modified) return std::make_pair(node, false);
+
+        // Key was removed so we need to cow
+        node = upd_node(node);
+        node->children[i] = child;
+
+        // Rebalance nodes along the traversal if necessary, ensuring they have >= t keys
+        if (child->n < t) node = rebalance_node(node, i);
+
+        return std::make_pair(node, modified);
+    }
+
+    // parent assumed to be copied
+    template <PrimitiveVal T, typename V, int t>
+    static std::pair<NodeRef<T, V, t>, bool> remove_from_non_leaf(NodeRef<T, V, t> parent, int i) {
+        KeyValue<T, V> key_value = parent->key_values[i];
+        key_value.key.free_ref();
+
+        if (parent->children[i]->n >= t) {
+            // Left child has at least t keys so we replace the key with the largest key in
+            // the left subtree and recursively remove the predecessor from the left child
+            auto pred_kv = get_in_order_predecessor(parent, i);
+            parent->key_values[i] = pred_kv;
+
+            // We already know pred_kv.key exists.
+            auto [left_child, _] = remove(parent->children[i], pred_kv.key);
+            parent->children[i] = left_child;
+
+            return std::make_pair(parent, true);
+        }
+
+        if (parent->children[i + 1]->n >= t) {
+            // Right child has at least t keys so we replace the key with the smallest key in
+            // the right subtree and recursively remove the successor from the right child
+            auto succ_kv = get_in_order_successor(parent, i);
+            parent->key_values[i + 1] = succ_kv;
+
+            // We already know pred_kv.key exists.
+            auto [right_child, _] = remove(parent->children[i + 1], succ_kv.key);
+            parent->children[i + 1] = right_child;
+
+            return std::make_pair(parent, true);
+        }
+
+        // Both children have fewer than t keys so we need to merge the right child into
+        // the left child before removing the key
+        parent = merge(parent, i); // parent already copied
+        auto [child, _] = remove(parent->children[i], key_value.key);
+        parent->children[i] = child;
+
+        return std::make_pair(parent, true);
+    }
+
+    // node assumed to be copied
+    template <PrimitiveVal T, typename V, int t>
+    static std::pair<NodeRef<T, V, t>, bool> remove_from_leaf(NodeRef<T, V, t> node, int i) {
+        // Free prion of key allocated elsewhere
+        node->key_values[i].key.free_ref();
+
+        // Overwrite key by shifting keys to the left
+        for (int j = i + 1; j < node->n; ++j)
+            node->key_values[j - 1] = node->key_values[j];
+
+        --node->n; // Reduce the key count
+
+        return std::make_pair(node, true);
+    }
+
+public:
+    BTreeFunctional() = delete;
+
+    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    static BTreeHeader<T, V, t> insert(BTreeHeader<T, V, k> btree, const K &key, V value) {
+        if (btree.root == REF_NULL) {
+            auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+
+            new_btree->root = create_node(true);
+            new_btree->root->key_values[0].key = key;
+            new_btree->root->key_values[0].value = value;
+            new_btree->root->n = 1;
+
+            new_btree->size = 1;
+
+            current_db()->free(btree);
+
+            return new_btree;
+        }
+
+        // Check if the root is full and needs to be split
+        if (btree->root->n == 2 * t - 1) {
+            // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
+            bool key_exists = false; // TODO: CHECK THAT HERE
+
+            if (key_exists) return btree;
+// TODO: Fix the below
+            /*NodeRef<T, V, t> new_root = create_node(false);
+            new_root->children[0] = btree->root; // Make the old root a child of the new root
+            root = s;
+            split_child(s, 0); // Splits old root and moves its middle key up to the new root
+            bool inserted = insert_non_full(s, key, value);
+            if (!inserted) {
+                NodeRef old_root = s->children[0];
+                free_node(s);
+                root = old_root;
+            }*/
+        }
+        /*else {
+            NodeRef old_root = root;
+
+            // Copy-on-write
+            if (current_db()->get_txn_id() != root->txn_id) {
+                root = copy_node(root);
+            }
+
+            bool inserted = insert_non_full(root, key, value);
+            if (!inserted && root->txn_id == current_db()->get_txn_id()) {
+                free_node(root);
+                root = copy_node(old_root);
+            }
+        }
+
+        return *this;*/
+    }
+
+    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    std::pair<BTreeHeader<T, V, t>, bool> remove(BTreeHeader<T, V, t> btree, const K &key) {
+        if (!btree->root) { return std::make_pair(btree, false); }
+
+        auto [new_root, removed] = remove(btree->root, key);
+
+        if (!removed) { return std::make_pair(btree, false); }
+
+        auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+        new_btree->root = new_root;
+        new_btree->size = btree->size - 1;
+        current_db()->free(btree); // Will be freed immediately since it was allocated this txn
+
+        // Make sure to clean up the root if it has no keys left
+        if (new_root->n == 0) {
+            new_btree->root = new_root->is_leaf ? REF_NULL : new_root->children[0];
+            free_node(new_root);
+        }
+
+        return std::make_pair(new_btree, removed);
+    }
+
+    template <PrimitiveVal T, typename V, int t>
+    static int size(BTreeHeader<T, V, t> btree) {
+        return btree->size;
+    }
+};
+
+#endif //BTREE_FUNCTIONAL_H
