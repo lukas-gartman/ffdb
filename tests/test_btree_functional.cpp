@@ -5,7 +5,6 @@
 #include <fcntl.h>
 
 #include <cstdlib>
-#include <ctime>
 #include <algorithm>
 #include <random>
 #include <unordered_set>
@@ -55,50 +54,57 @@ TEST(BTreeFunctionalTest, InsertTest) {
 
     remove("test.db");
 }
-/*
 
-TEST(BTreeTest, Transactions) {
+TEST(BTreeFunctionalTest, Transactions) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 1024);
 
     constexpr int num_transactions = 1000;
 
     db.start_txn(DB_WRITE_TXN);
-    BTree::BTree<int, float, 3> trees[num_transactions];
-    trees[0] = BTree::BTree<int, float, 3>();
+    std::vector<decltype(BT::empty())> trees;
+
+    auto tree = BT::empty();
+    tree = BT::insert(tree, 1, 1.5f);
+    trees.push_back(tree);
     db.commit_txn();
-    for (int i = 1; i < num_transactions; i++) {
+
+    for (int i = 2; i <= num_transactions; ++i) {
         db.start_txn(DB_WRITE_TXN);
-        trees[i] = trees[i-1].insert(i, .5f + i);
+        trees.push_back(BT::insert(trees.back(), i, i + 0.5f));
         db.commit_txn();
     }
 
     db.start_txn(DB_WRITE_TXN);
-    trees[num_transactions-1].insert(num_transactions, 1337.0f);
+    BT::insert(trees.back(), num_transactions + 1, 1337.0f);
     db.commit_txn();
 
-    for (int t = 0; t < num_transactions; t++) {
-        EXPECT_EQ(trees[t].size(), t + 1);
+    for (int t = 0; t < num_transactions; ++t) {
+        EXPECT_EQ(BT::size(trees[t]), t + 1);
     }
 
     remove("test.db");
 }
 
-TEST(BTreeTest, SequentialInsertTest) {
+TEST(BTreeFunctionalTest, SequentialInsertTest) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
 
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
     constexpr int num_keys = 500000;
     for (int i = 1; i <= num_keys; ++i) {
-        tree.insert(i, i + 0.5f);
+        tree = BT::insert(tree, i, i + 0.5f);
     }
 
     for (int i = 1; i <= num_keys; ++i) {
-        EXPECT_TRUE(i);
+        EXPECT_TRUE(BT::key_exists(tree, i));
     }
 
     db.commit_txn();
@@ -106,26 +112,28 @@ TEST(BTreeTest, SequentialInsertTest) {
     remove("test.db");
 }
 
-TEST(BTreeTest, RandomInsert) {
+TEST(BTreeFunctionalTest, RandomInsert) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
     constexpr int num_keys = 50;
-    std::srand(std::time(nullptr));
+    // deterministic seed: do not call srand
     std::set<int> keys;
 
     while (keys.size() < num_keys) {
-        int key = std::rand() % num_keys * 5 + 1;
+        int key = (std::rand() % num_keys) * 5 + 1;
         if (keys.insert(key).second) {
-            tree.insert(key, key + 0.5f);
+            tree = BT::insert(tree, key, key + 0.5f);
         }
     }
 
     for (int key : keys) {
-        EXPECT_TRUE(tree.search(key));
+        EXPECT_TRUE(BT::key_exists(tree, key));
     }
 
     db.commit_txn();
@@ -133,221 +141,202 @@ TEST(BTreeTest, RandomInsert) {
     remove("test.db");
 }
 
-TEST(BTreeTest, DuplicateTest) {
+TEST(BTreeFunctionalTest, DuplicateTest) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
     constexpr int num_keys = 100000;
-    std::srand(std::time(nullptr));
+    // deterministic seed: do not call srand
     std::set<int> keys;
 
     while (keys.size() < num_keys) {
-        int key = std::rand() % num_keys * 5 + 1;
+        int key = (std::rand() % num_keys) * 5 + 1;
         if (keys.insert(key).second) {
-            tree.insert(key, key + 0.5f);
+            tree = BT::insert(tree, key, key + 0.5f);
         }
     }
 
-    std::set<int> unique_keys;
-    bool has_duplicate = false;
-
-    tree.traverse([&unique_keys, &has_duplicate](const FFDBKey<int>& key, auto value) {
-        // If you want to compare with int, add a get_value() method to FFDBKey
-        int k = std::get<int>(key.key_storage);
-        if (unique_keys.contains(k)) {
-            std::cout << "Duplicate key found: " << k << ": " << value << std::endl;
-            has_duplicate = true;
-        } else {
-            unique_keys.insert(k);
-        }
-    });
-
-    EXPECT_FALSE(has_duplicate);
+    EXPECT_EQ(BT::size(tree), (int)keys.size());
+    for (int k : keys) EXPECT_TRUE(BT::key_exists(tree, k));
 
     db.commit_txn();
 
     remove("test.db");
 }
 
-TEST(BTreeTest, ManualDuplicateTest) {
+TEST(BTreeFunctionalTest, ManualDuplicateTest) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
     const int keys[] = {1, 2, 3, 3, 4};
     for (int key : keys) {
-        tree.insert(key, key + 0.5f);
+        tree = BT::insert(tree, key, key + 0.5f);
     }
 
-    tree.remove(3);
-    EXPECT_FALSE(tree.search(3));
+    auto [new_tree, removed] = BT::remove(tree, 3);
+    EXPECT_TRUE(removed);
+    EXPECT_FALSE(BT::key_exists(new_tree, 3));
 
     db.commit_txn();
 
     remove("test.db");
 }
 
-TEST(BTreeTest, RemoveTest) {
+TEST(BTreeFunctionalTest, RemoveTest) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
-    int arr[] = {1,2,3,4,5};
-    int arr2[] = {1, 2,3,4,5};
+    for (int i = 1; i <= 5; ++i) tree = BT::insert(tree, i, i + 0.5f);
 
-    tree.insert(arr, 1.0f);
-
-
-    EXPECT_TRUE(tree.search(arr2));
+    auto [t_after_remove, removed] = BT::remove(tree, 3);
+    EXPECT_TRUE(removed);
+    EXPECT_FALSE(BT::key_exists(t_after_remove, 3));
 
     db.commit_txn();
 
     remove("test.db");
 }
 
-TEST(BTreeTest, RemoveTestCoW) {
+TEST(BTreeFunctionalTest, RemoveTestCoW) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
-    // First transaction: create initial tree with 3 elements
     db.start_txn(DB_WRITE_TXN);
-    BTree::BTree<int, float, 3> tree;
-    tree.insert(10, 1.0f);
-    tree.insert(20, 2.0f);
-    tree.insert(5,  3.0f);
-    auto tree_copy1 = tree;  // Save reference to this version
+    auto tree = BT::empty();
+    tree = BT::insert(tree, 10, 1.0f);
+    tree = BT::insert(tree, 20, 2.0f);
+    tree = BT::insert(tree, 5,  3.0f);
+    auto tree_copy1 = tree;
     db.commit_txn();
 
-    // Second transaction: add 3 more elements
     db.start_txn(DB_WRITE_TXN);
-    tree.insert(6,  4.0f);
-    tree.insert(12, 5.0f);
-    tree.insert(30, 6.0f);
-    auto tree_copy2 = tree;  // Save reference to this version
+    tree = BT::insert(tree, 6,  4.0f);
+    tree = BT::insert(tree, 12, 5.0f);
+    tree = BT::insert(tree, 30, 6.0f);
+    auto tree_copy2 = tree;
     db.commit_txn();
 
-    // Third transaction: add 2 more and remove 3
     db.start_txn(DB_WRITE_TXN);
-    tree.insert(7,  7.0f);
-    tree.insert(17, 8.0f);
-    tree.remove(6);
-    tree.remove(7);
-    tree.remove(12);
+    tree = BT::insert(tree, 7,  7.0f);
+    tree = BT::insert(tree, 17, 8.0f);
+    auto res1 = BT::remove(tree, 6); tree = res1.first;
+    auto res2 = BT::remove(tree, 7); tree = res2.first;
+    auto res3 = BT::remove(tree, 12); tree = res3.first;
     db.commit_txn();
 
-    // Verify each version retained its correct state
-    // tree_copy1 should have the state from first transaction
-    EXPECT_TRUE(tree_copy1.search(10));
-    EXPECT_TRUE(tree_copy1.search(20));
-    EXPECT_TRUE(tree_copy1.search(5));
-    EXPECT_FALSE(tree_copy1.search(6));
-    EXPECT_EQ(tree_copy1.size(), 3);
+    EXPECT_TRUE(BT::key_exists(tree_copy1, 10));
+    EXPECT_TRUE(BT::key_exists(tree_copy1, 20));
+    EXPECT_TRUE(BT::key_exists(tree_copy1, 5));
+    EXPECT_FALSE(BT::key_exists(tree_copy1, 6));
+    EXPECT_EQ(BT::size(tree_copy1), 3);
 
-    // tree_copy2 should have the state from second transaction
-    EXPECT_TRUE(tree_copy2.search(10));
-    EXPECT_TRUE(tree_copy2.search(6));
-    EXPECT_TRUE(tree_copy2.search(12));
-    EXPECT_TRUE(tree_copy2.search(30));
-    EXPECT_FALSE(tree_copy2.search(7));
-    EXPECT_EQ(tree_copy2.size(), 6);
+    EXPECT_TRUE(BT::key_exists(tree_copy2, 10));
+    EXPECT_TRUE(BT::key_exists(tree_copy2, 6));
+    EXPECT_TRUE(BT::key_exists(tree_copy2, 12));
+    EXPECT_TRUE(BT::key_exists(tree_copy2, 30));
+    EXPECT_FALSE(BT::key_exists(tree_copy2, 7));
+    EXPECT_EQ(BT::size(tree_copy2), 6);
 
-    // Final tree should have the state after all transactions
-    EXPECT_TRUE(tree.search(10));
-    EXPECT_TRUE(tree.search(20));
-    EXPECT_TRUE(tree.search(5));
-    EXPECT_FALSE(tree.search(6));
-    EXPECT_FALSE(tree.search(7));
-    EXPECT_FALSE(tree.search(12));
-    EXPECT_TRUE(tree.search(30));
-    EXPECT_TRUE(tree.search(17));
-    EXPECT_EQ(tree.size(), 5);
+    EXPECT_TRUE(BT::key_exists(tree, 10));
+    EXPECT_TRUE(BT::key_exists(tree, 20));
+    EXPECT_TRUE(BT::key_exists(tree, 5));
+    EXPECT_FALSE(BT::key_exists(tree, 6));
+    EXPECT_FALSE(BT::key_exists(tree, 7));
+    EXPECT_FALSE(BT::key_exists(tree, 12));
+    EXPECT_TRUE(BT::key_exists(tree, 30));
+    EXPECT_TRUE(BT::key_exists(tree, 17));
+    EXPECT_EQ(BT::size(tree), 5);
 
     remove("test.db");
 }
 
-TEST(BTreeTest, SequentialInsertRemove) {
+TEST(BTreeFunctionalTest, SequentialInsertRemove) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
-    constexpr int num_keys = 1000000;
-    for (int i = num_keys; i >= num_keys; --i) {
-        tree.insert(i, i + 0.5f);
+    constexpr int num_keys = 1000;
+    for (int i = num_keys; i >= 1; --i) {
+        tree = BT::insert(tree, i, i + 0.5f);
     }
 
-    for (int i = num_keys; i >= num_keys; --i) {
-        tree.remove(i);
-        EXPECT_FALSE(tree.search(i)) << "Failed for key: " << i;
+    for (int i = num_keys; i >= 1; --i) {
+        auto [new_tree, removed] = BT::remove(tree, i);
+        tree = new_tree;
+        EXPECT_TRUE(removed) << "Failed to remove: " << i;
+        EXPECT_FALSE(BT::key_exists(tree, i)) << "Failed for key: " << i;
     }
 
     remove("test.db");
 }
 
-TEST(BTreeTest, RootNodeDelete) {
+TEST(BTreeFunctionalTest, RootNodeDelete) {
+    using BT = BTreeFunctional<int, float, 3>;
+
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);
 
-    BTree::BTree<int, float, 3> tree;
+    auto tree = BT::empty();
 
-    // Insertion order
-    std::vector insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
-                              6, 23, 29, 16, 2, 25, 0, 17, 12, 14, 1, 9, 18, 20, 10};
+    std::vector<int> insertKeys = {15, 11, 27, 3, 21, 24, 19, 13, 22, 4, 5, 8, 28, 26, 7,
+                                   6, 23, 29, 16, 2, 25, 0, 17, 12, 14, 1, 9, 18, 20, 10};
     for (int key : insertKeys) {
-        std::cout << "inserting key " << key << std::endl;
-        tree.insert(key, key + 0.5f);
-        EXPECT_TRUE(tree.search(key));
+        tree = BT::insert(tree, key, key + 0.5f);
+        EXPECT_TRUE(BT::key_exists(tree, key));
     }
 
-    tree.print();
+    tree = BT::remove(tree, 9).first;
+    EXPECT_FALSE(BT::key_exists(tree, 9));
+    tree = BT::remove(tree, 20).first;
+    EXPECT_FALSE(BT::key_exists(tree, 20));
+    tree = BT::remove(tree, 6).first;
+    EXPECT_FALSE(BT::key_exists(tree, 6));
+    tree = BT::remove(tree, 19).first;
+    EXPECT_FALSE(BT::key_exists(tree, 19));
+    tree = BT::remove(tree, 8).first;
+    EXPECT_FALSE(BT::key_exists(tree, 8));
+    tree = BT::remove(tree, 15).first;
+    EXPECT_FALSE(BT::key_exists(tree, 15));
 
-    // Deletion order
-    tree.remove(9);
-    EXPECT_FALSE(tree.search(9));
-    tree.remove(20);
-    EXPECT_FALSE(tree.search(20));
-    tree.remove(6);
-    EXPECT_FALSE(tree.search(6));
-    tree.remove(19);
-    EXPECT_FALSE(tree.search(19));
-    tree.remove(8);
-    EXPECT_FALSE(tree.search(8));
-    tree.remove(15);
-    EXPECT_FALSE(tree.search(15));
-    std::cout << "BEFORE ----------------" << std::endl;
-    tree.print();
-
-    tree.remove(21);
-
-    std::cout << "AFTER ----------------" << std::endl;
-    tree.print();
-    EXPECT_FALSE(tree.search(21));
+    tree = BT::remove(tree, 21).first;
+    EXPECT_FALSE(BT::key_exists(tree, 21));
 
     db.commit_txn();
 
     remove("test.db");
 }
 
-TEST(BTreeTest, getSize) {
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-    EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-}
-
-*/
+// TEST(BTreeTest, getSize) {
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
+// }

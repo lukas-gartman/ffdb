@@ -510,7 +510,7 @@ public:
     }
 
     template<ValidKeyArg<T> K>
-    std::pair<BTreeRef<T, V, t>, bool> remove(BTreeRef<T, V, t> btree, const K &key) {
+    static std::pair<BTreeRef<T, V, t>, bool> remove(BTreeRef<T, V, t> btree, const K &key) {
         if (!btree->root) { return std::make_pair(btree, false); }
 
         auto [new_root, removed] = remove(btree->root, key);
@@ -549,3 +549,4 @@ public:
 };
 
 #endif //BTREE_FUNCTIONAL_H
+
