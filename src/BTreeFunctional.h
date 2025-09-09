@@ -14,12 +14,15 @@ class BTree;
 template <PrimitiveVal T, typename V, int t>
 class Node;
 
+template<PrimitiveVal T, typename V, int t>
+class BTreeFunctional;
+
 #define REF_NULL Ref<Node<T, V, t>>::null()
 
 template <PrimitiveVal T, typename V>
 struct KeyValue {
     FFDBKey<T> key;
-    Ref<V>  value;
+    V  value;
 };
 
 template <int t> constexpr int chld_size = 2 * t;
@@ -37,7 +40,7 @@ private:
     Node(Id txn_id, int n, bool is_leaf): txn_id(txn_id), n(n), is_leaf(is_leaf) {}
 
 public:
-    friend class BTree<T, V, t>;
+    friend class BTreeFunctional<T, V, t>;
 };
 
 template <PrimitiveVal T, typename V, int t>
@@ -50,15 +53,15 @@ private:
     int size;
 
 public:
-    friend class BTree<T, V, t>;
+    friend class BTreeFunctional<T, V, t>;
 };
 
 template <PrimitiveVal T, typename V, int t>
 using BTreeRef = Ref<BTreeHeader<T, V, t>>;
 
+template<PrimitiveVal T, typename V, int t>
 class BTreeFunctional {
 private:
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> create_node(bool is_leaf) {
 
         auto node = current_db()->malloc<Node<T, V, t>>();
@@ -73,12 +76,10 @@ private:
         return node;
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static void free_node(NodeRef<T, V, t> node) {
         current_db()->free(node);
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> upd_node(NodeRef<T, V, t> node) {
         if (node->txn_id == current_db()->get_txn_id())
             return node;
@@ -92,7 +93,7 @@ private:
     }
 
     // Originally search
-    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    template<ValidKeyArg<T> K>
     static NodeRef<T, V, t> find_node(NodeRef<T, V, t> x, const K &key) {
         // Find the index of the first key greater than or equal to key
         int i = 0;
@@ -104,7 +105,6 @@ private:
             : find_node(x->children[i], key); // Search in the child
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> split_child(NodeRef<T, V, t> x, int i) {
         NodeRef y = upd_node(x->children[i]);
         NodeRef z = create_node(y->is_leaf);
@@ -144,7 +144,7 @@ private:
         return x;
     }
 
-    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    template<ValidKeyArg<T> K>
     static std::pair<NodeRef<T, V, t>, bool> insert_non_full(NodeRef<T, V, t> x, const K &key, V value) {
         // Find the position to insert the new key, starting from the right
         int i = x->n - 1;
@@ -189,7 +189,6 @@ private:
         return std::make_pair(x, collision);
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static KeyValue<T, V> get_in_order_predecessor(NodeRef<T, V, t> node, int i) {
         // Find the rightmost child of the left child
         auto current = node->children[i];
@@ -199,7 +198,6 @@ private:
         return current->key_values[current->n - 1];
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static KeyValue<T, V> get_in_order_successor(NodeRef<T, V, t> node, int i) {
         // Find the leftmost child of the right child
         auto current = node->children[i + 1];
@@ -210,7 +208,6 @@ private:
     }
 
     // parent assumed to be copied
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> merge(NodeRef<T, V, t> parent, int i) {
         NodeRef child = upd_node(parent->children[i]);
         parent->children[i] = child;
@@ -252,7 +249,6 @@ private:
     }
 
     // Parent assumed to be copied
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> move_key_and_child_from_left_sibling(NodeRef<T, V, t> parent, int i) {
         NodeRef child = upd_node(parent->children[i]);
         parent->children[i] = child;
@@ -291,7 +287,6 @@ private:
     }
 
     // Parent assumed to be copied
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> move_key_and_child_from_right_sibling(NodeRef<T, V, t> parent, int i) {
         NodeRef child = upd_node(parent->children[i]);
         parent->children[i] = child;
@@ -328,7 +323,6 @@ private:
         return parent;
     }
 
-    template <PrimitiveVal T, typename V, int t>
     static NodeRef<T, V, t> rebalance_node(NodeRef<T, V, t> parent, int i) {
         NodeRef left_sibling = i != 0 ? parent->children[i - 1] : REF_NULL;
         NodeRef right_sibling = i != parent->n ? parent->children[i + 1] : REF_NULL;
@@ -349,7 +343,7 @@ private:
     }
 
     // node not assumed to be copied because we don't want to copy if the key is not found.
-    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
+    template<ValidKeyArg<T> K>
     static std::pair<NodeRef<T, V, t>, bool> remove(NodeRef<T, V, t> node, const K &key) {
         // Find the first key greater than or equal to key
         int i = 0;
@@ -383,7 +377,6 @@ private:
     }
 
     // parent assumed to be copied
-    template <PrimitiveVal T, typename V, int t>
     static std::pair<NodeRef<T, V, t>, bool> remove_from_non_leaf(NodeRef<T, V, t> parent, int i) {
         KeyValue<T, V> key_value = parent->key_values[i];
         key_value.key.free_ref();
@@ -424,7 +417,6 @@ private:
     }
 
     // node assumed to be copied
-    template <PrimitiveVal T, typename V, int t>
     static std::pair<NodeRef<T, V, t>, bool> remove_from_leaf(NodeRef<T, V, t> node, int i) {
         // Free prion of key allocated elsewhere
         node->key_values[i].key.free_ref();
@@ -438,15 +430,38 @@ private:
         return std::make_pair(node, true);
     }
 
+    static void debug_print(NodeRef<T, V, t> node, const std::string &path) {
+        if (node == REF_NULL) return;
+
+        std::cout << path << ": " << std::endl;
+        for (int i = 0; i < node->n; i++) {
+            std::cout << "    node" << i << ": " << node->key_values[i].key
+                      << ": " << node->key_values[i].value << std::endl;
+        }
+
+        for (int i = 0; i <= node->n; i++) {
+            if (!node->is_leaf) {
+                debug_print(node->children[i], path + "->" + std::to_string(i));
+            }
+        }
+    }
+
 public:
     BTreeFunctional() = delete;
 
-    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
-    static BTreeHeader<T, V, t> insert(BTreeHeader<T, V, t> btree, const K &key, V value) {
+    static BTreeRef<T, V, t> empty() {
+        auto btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+        btree->size = 0;
+        btree->root = REF_NULL;
+        return btree;
+    }
+
+    template<ValidKeyArg<T> K>
+    static BTreeRef<T, V, t> insert(BTreeRef<T, V, t> btree, const K &key, V value) {
         if (btree->root == REF_NULL) {
             auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
 
-            new_btree->root = create_node<T, V, t>(true);
+            new_btree->root = create_node(true);
             new_btree->root->key_values[0].key = key;
             new_btree->root->key_values[0].value = value;
             new_btree->root->n = 1;
@@ -463,7 +478,7 @@ public:
             // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
             if (find_node(btree->root, key) != REF_NULL) return btree;
 
-            auto new_root = create_node<T, V, t>(false);
+            auto new_root = create_node(false);
             new_root->children[0] = btree->root; // Make the old root a child of the new root
 
             //btree->root = new_root;
@@ -494,8 +509,8 @@ public:
         return new_btree;
     }
 
-    template <PrimitiveVal T, typename V, int t, typename K> requires ValidKeyArg<K, T>
-    std::pair<BTreeHeader<T, V, t>, bool> remove(BTreeHeader<T, V, t> btree, const K &key) {
+    template<ValidKeyArg<T> K>
+    std::pair<BTreeRef<T, V, t>, bool> remove(BTreeRef<T, V, t> btree, const K &key) {
         if (!btree->root) { return std::make_pair(btree, false); }
 
         auto [new_root, removed] = remove(btree->root, key);
@@ -516,9 +531,20 @@ public:
         return std::make_pair(new_btree, removed);
     }
 
-    template <PrimitiveVal T, typename V, int t>
-    static int size(BTreeHeader<T, V, t> btree) {
+    static int size(BTreeRef<T, V, t> btree) {
         return btree->size;
+    }
+
+    template <ValidKeyArg<T> K>
+    static bool key_exists(BTreeRef<T, V, t> btree, const K &key) {
+        return btree->root != REF_NULL && find_node(btree->root, key) != REF_NULL;
+    }
+
+    static void debug_print(BTreeRef<T, V, t> btree) {
+        if (!btree->root) return;
+
+        debug_print(btree->root, std::string("Root"));
+        std::cout << std::endl;
     }
 };
 

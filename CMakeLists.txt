@@ -9,6 +9,7 @@ set(FFDB_SOURCES
     src/Typedefs.cpp
     src/Typedefs.h
     src/BTree.h
+        src/BTreeFunctional.h
     src/Synch.h
     src/SBT.h
     src/FFDBKey.h
@@ -25,6 +26,7 @@ else()
         tests/test_main.cpp
         tests/test_allocator.cpp
         tests/test_btree.cpp
+        tests/test_btree_functional.cpp
         tests/test_sbt.cpp
         tests/test_ffdb_key.cpp
         ${FFDB_SOURCES}
