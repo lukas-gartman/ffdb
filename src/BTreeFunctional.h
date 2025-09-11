@@ -398,9 +398,9 @@ private:
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
             auto succ_kv = get_in_order_successor(parent, i);
-            parent->key_values[i + 1] = succ_kv;
+            parent->key_values[i] = succ_kv;
 
-            // We already know pred_kv.key exists.
+            // We already know succ_kv.key exists.
             auto [right_child, _] = remove(parent->children[i + 1], succ_kv.key);
             parent->children[i + 1] = right_child;
 
