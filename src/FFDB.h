@@ -63,13 +63,28 @@ struct Revision {
 
 // TODO: Should make this non-mutable in some way.
 struct DBConf {
+private:
     Size sys_page_size;
     Size log_page_size;
     Size small_align;
     Size large_align;
     Size align_threshold;
-    Size key_prefix_size;
     bool page_boundry_aware;
+
+public:
+    DBConf(Size sys_page_size, Size log_page_size, Size small_align, Size large_align,
+           Size align_threshold, bool page_boundry_aware):
+        sys_page_size(sys_page_size), log_page_size(log_page_size), small_align(small_align), large_align(large_align),
+        align_threshold(align_threshold), page_boundry_aware(page_boundry_aware) {}
+
+    DBConf() : DBConf(4096, 4096, 16, 4096, 4096, true) {};
+
+    Size get_sys_page_size() const { return sys_page_size; }
+    Size get_log_page_size() const { return log_page_size; }
+    Size get_small_align() const { return small_align; }
+    Size get_large_align() const { return large_align; }
+    Size get_align_threshold() const { return align_threshold; }
+    bool is_page_boundry_aware() const { return page_boundry_aware; }
 };
 
 struct SharedState {
@@ -165,7 +180,7 @@ private:
     Ref<BlockDescr> balancel_bd_tree(Ref<BlockDescr> tree);
     Ref<BlockDescr> balancer_bd_tree(Ref<BlockDescr> tree);
 
-    int get_size(Ref<BlockDescr> node);
+    Size get_size(Ref<BlockDescr> node);
     std::pair<Ref<BlockDescr>, Ref<BlockDescr>> get_children(Ref<BlockDescr> node);
 
     void lock();
@@ -231,17 +246,15 @@ public:
     void validate_tree(Ref<BlockDescr> tree) {
         if (!tree) return;
 
-        auto right = tree->tree_right;
-        auto left = tree->tree_left;
-        auto right_left = right ? right->tree_left : 0;
-        auto right_right = right ? right->tree_right : 0;
-        auto left_left = left ? left->tree_left : 0;
-        auto left_right = left ? left->tree_right : 0;
+        assert(is_balanced(tree));
+    }
 
-        assert(get_size(left) >= get_size(right_left));
-        assert(get_size(left) >= get_size(right_right));
-        assert(get_size(right) >= get_size(left_left));
-        assert(get_size(right) >= get_size(left_right));
+    bool is_balanced(Ref<BlockDescr> tree) {
+        if (tree == 0) return true;
+        return get_size(tree->tree_left) + get_size(tree->tree_right) <= 1
+            || get_size(tree->tree_left) <= 3 * get_size(tree->tree_right)
+            && get_size(tree->tree_right) <= 3 * get_size(tree->tree_left)
+            && is_balanced(tree->tree_left) && is_balanced(tree->tree_right);
     }
 };
 

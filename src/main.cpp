@@ -26,7 +26,7 @@ std::vector<std::string> read_words_file(const std::string& filename) {
 
     return words;
 }
-// TODO: Figure out why SEGFAULT occurs. Seems that somewhere in BTree this becomes invalid when inserting the word felis.
+
 int main() {
     remove("test.db");
 

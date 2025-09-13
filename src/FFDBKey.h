@@ -9,7 +9,7 @@
 #include "FFDB.h"
 #include "Typedefs.h"
 
-const size_t PREFIX_SIZE = 8;
+constexpr size_t PREFIX_SIZE = 8;
 
 template <PrimitiveVal T>
 class FFDBKey {

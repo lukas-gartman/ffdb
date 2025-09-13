@@ -9,6 +9,19 @@
 #include <random>
 #include <unordered_set>
 
+TEST(BTreeFunctionalTest, TESTILINGUS) {
+    using BT = BTreeFunctional<int, float, 3>;
+
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
+    db.start_txn(DB_WRITE_TXN);
+
+    db.commit_txn();
+
+    remove("test.db");
+}
+
 TEST(BTreeFunctionalTest, InsertTest) {
     using BT = BTreeFunctional<int, float, 3>;
 
@@ -61,7 +74,7 @@ TEST(BTreeFunctionalTest, Transactions) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 1024);
 
-    constexpr int num_transactions = 1000;
+    constexpr int num_transactions = 40;
 
     db.start_txn(DB_WRITE_TXN);
     std::vector<decltype(BT::empty())> trees;

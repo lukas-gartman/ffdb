@@ -50,10 +50,10 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
-    if (conf.page_boundry_aware)
-        bytes = align_bytes(bytes, bytes >= conf.align_threshold ? conf.large_align : conf.small_align);
+    if (conf.is_page_boundry_aware())
+        bytes = align_bytes(bytes, bytes >= conf.get_align_threshold() ? conf.get_large_align() : conf.get_small_align());
     else
-        bytes = align_bytes(bytes, conf.small_align);
+        bytes = align_bytes(bytes, conf.get_small_align());
 
     Offset offset;
 
@@ -80,6 +80,7 @@ Offset FFDB::malloc_internal(Size bytes) {
     writer_state.free_blocks = new_tree;
     offset = found_block.ofs;
     if (offset != 0) {
+        validate_tree(writer_state.free_blocks);
         if (found_block.size > bytes)
             set_lf_block({offset + bytes, found_block.size - bytes, found_block.txn_id});
 
@@ -88,8 +89,8 @@ Offset FFDB::malloc_internal(Size bytes) {
 
     if (bytes > mmap_size - writer_state.top) resize_map(bytes);
 
-    if (conf.page_boundry_aware && bytes >= conf.align_threshold) {
-        auto bytes_left = bytes_left_in_page(writer_state.top, conf.log_page_size);
+    if (conf.is_page_boundry_aware() && bytes >= conf.get_align_threshold()) {
+        auto bytes_left = bytes_left_in_page(writer_state.top, conf.get_log_page_size());
 
         // Maybe not obvious: at first glance it may look like we need a specialized resize check here where we check
         // bytes + bytes_left instead. This is not necessary as bytes and bytes + bytes_left occupies the exact same pages.
@@ -101,11 +102,12 @@ Offset FFDB::malloc_internal(Size bytes) {
 
         // Block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
         Size bd_size = sizeof(BlockDescr);
-        if (bytes_left > bd_size + conf.small_align) {
+        if (bytes_left > bd_size + conf.get_small_align()) {
             lo_block.ofs += bd_size;
             lo_block.size -= bd_size;
 
             writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, lo_block);
+            validate_tree(writer_state.free_blocks);
             bytes_left -= bd_size; // Update bytes_left because ins_bd_descr updated writer_state.top.
             lo_block = {0, 0, 0};
         }
@@ -131,7 +133,7 @@ void FFDB::free_internal(Offset offset, Size bytes) {
 
     if (offset == 0) return;
 
-    Size align = bytes > conf.align_threshold ? conf.large_align : conf.small_align;
+    Size align = bytes > conf.get_align_threshold() ? conf.get_large_align() : conf.get_small_align();
     bytes = align_bytes(bytes, align);
 
     Size txn_id = (offset >= shared_state->top) ? 0 : shared_state->curr_txn_id;
@@ -146,6 +148,7 @@ void FFDB::free_internal(Offset offset, Size bytes) {
             writer_state.top -= writer_state.lf_block.size;
             writer_state.lf_block = {0, 0, 0};
         }
+
         return;
     }
 
@@ -167,6 +170,7 @@ void FFDB::free_internal(Offset offset, Size bytes) {
 
         // Otherwise, it will get replaced.
         writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, writer_state.lf_block);
+        validate_tree(writer_state.free_blocks);
     }
 
     // 0 as an id here means that the last free block is located beyond
@@ -183,6 +187,7 @@ void FFDB::set_lf_block(Block lf_block) {
             writer_state.free_blocks,
             writer_state.lf_block
         );
+        validate_tree(writer_state.free_blocks);
     }
 
     writer_state.lf_block = lf_block;
@@ -197,7 +202,7 @@ Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<Blo
                 writer_state.unused_descrs->next_unused;
     }
     else {
-        const Size bytes = align_bytes(sizeof(BlockDescr), conf.small_align);
+        const Size bytes = align_bytes(sizeof(BlockDescr), conf.get_small_align());
 
         if (bytes > shared_state->mmap_size - writer_state.top)
             resize_map(bytes);
@@ -244,31 +249,34 @@ Ref<BlockDescr> FFDB::upd_bd_tree_node(Ref<BlockDescr> tree, Ref<BlockDescr> lef
 }
 
 Ref<BlockDescr> FFDB::ins_bd_tree(Ref<BlockDescr> tree, Block block) {
-    if (tree == 0) return new_block_descr(block);
+    if (tree == 0) {
+        return new_block_descr(block, 0, 0);
+    }
 
     bool traverse_left =
         block.size != tree->block.size ? block.size < tree->block.size :
         block.txn_id != tree->block.txn_id ? block.txn_id < tree->block.txn_id :
-        tree->tree_left->tree_size < tree->tree_right->tree_size;
+        get_size(tree->tree_left) < get_size(tree->tree_right);
 
     if (traverse_left) {
+        auto new_left = ins_bd_tree(tree->tree_left, block);
         tree = upd_bd_tree_node(
             tree,
-            ins_bd_tree(tree->tree_left, block),
+            new_left,
             tree->tree_right
         );
         tree = balancel_bd_tree(tree);
     }
     else {
+        auto new_right = ins_bd_tree(tree->tree_right, block);
         tree = upd_bd_tree_node(
             tree,
             tree->tree_left,
-            ins_bd_tree(tree->tree_right, block)
+            new_right
         );
+
         tree = balancer_bd_tree(tree);
     }
-
-    validate_tree(tree);
 
     return tree;
 }
@@ -309,12 +317,14 @@ std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size b
         // We have found a fitting block. Return.
         if (found_block.ofs != 0) {
             tree = balancer_bd_tree(upd_bd_tree_node(tree, new_tree_left, tree->tree_right));
+
             return std::make_pair(tree, found_block);
         }
 
         // No perfect fit found in the left subtree and all larger blocks are in use.
-        if (tree->block.txn_id >= shared_state->min_txn_id)
+        if (tree->block.txn_id >= shared_state->min_txn_id) {
             return std::make_pair(tree, Block{0, 0, 0});
+        }
 
         // We have not found a perfect fit in the left subtree, but we can use the
         // current block.
@@ -380,10 +390,16 @@ std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::pop_last_bd(Ref<BlockDescr> tr
     return std::make_pair(tree, bd_to_remove);
 }
 
+/*Ref<BlockDescr> FFDB::maintain_bd_tree(Ref<BlockDescr> tree) {
+
+}*/
+
 Ref<BlockDescr> FFDB::rotl_bd_tree_node(Ref<BlockDescr> tree) {
     if (tree == 0) return tree;
-
     auto right = tree->tree_right;
+
+    if (right == 0) return tree;
+
     auto right_left = right ? right->tree_left : 0;
     auto new_left = upd_bd_tree_node(tree, tree->tree_left, right_left);
     return upd_bd_tree_node(right, new_left, right->tree_right);
@@ -391,8 +407,10 @@ Ref<BlockDescr> FFDB::rotl_bd_tree_node(Ref<BlockDescr> tree) {
 
 Ref<BlockDescr> FFDB::rotr_bd_tree_node(Ref<BlockDescr> tree) {
     if (tree == 0) return tree;
-
     auto left = tree->tree_left;
+
+    if (left == 0) return tree;
+
     auto left_right = left ? left->tree_right : 0;
     auto new_right = upd_bd_tree_node(tree, left_right, tree->tree_right);
     return upd_bd_tree_node(left, left->tree_left, new_right);
@@ -405,13 +423,15 @@ Ref<BlockDescr> FFDB::balancel_bd_tree(Ref<BlockDescr> tree) {
     auto left = tree->tree_left;
     auto [left_left, left_right] = get_children(left);
 
-    if (get_size(right) < get_size(left_right)) {
-        auto new_left = rotl_bd_tree_node(left);
-        tree = upd_bd_tree_node(tree, new_left, right);
-        return rotr_bd_tree_node(tree);
-    }
-    else if (get_size(right) < get_size(left_left)) {
-        return rotr_bd_tree_node(tree);
+    if (get_size(left) > 3 * get_size(right)) {
+        if (get_size(left_right) < 2 * get_size(left_left)) {
+            tree = rotr_bd_tree_node(tree);
+        }
+        else {
+            auto new_left = rotl_bd_tree_node(left);
+            tree = upd_bd_tree_node(tree, new_left, right);
+            tree = rotr_bd_tree_node(tree);
+        }
     }
 
     return tree;
@@ -424,19 +444,21 @@ Ref<BlockDescr> FFDB::balancer_bd_tree(Ref<BlockDescr> tree) {
     auto left = tree->tree_left;
     auto [right_left, right_right] = get_children(right);
 
-    if (get_size(left) < get_size(right_left)) {
-        auto new_right = rotr_bd_tree_node(right);
-        tree = upd_bd_tree_node(tree, left, new_right);
-        tree = rotl_bd_tree_node(tree);
-    }
-    else if (get_size(left) < get_size(right_right)) {
-        tree = rotl_bd_tree_node(tree);
+    if (get_size(right) > 3 * get_size(left)) {
+        if (get_size(right_left) < 2 * get_size(right_right)) {
+            tree = rotl_bd_tree_node(tree);
+        }
+        else {
+            auto new_right = rotr_bd_tree_node(right);
+            tree = upd_bd_tree_node(tree, left, new_right);
+            tree = rotl_bd_tree_node(tree);
+        }
     }
 
     return tree;
 }
 
-int FFDB::get_size(Ref<BlockDescr> node) {
+Size FFDB::get_size(Ref<BlockDescr> node) {
     return node ? node->tree_size : 0;
 }
 
@@ -484,7 +506,7 @@ void FFDB::resize_map(Size min_size) {
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {
-        if (ftruncate(fd, conf.sys_page_size + new_size) == -1) {
+        if (ftruncate(fd, conf.get_sys_page_size() + new_size) == -1) {
             shared_state->resize_rw_lock.unlock();
             throw std::runtime_error("Errno: " + std::to_string(errno));
         }
@@ -536,18 +558,10 @@ filepath(std::move(filepath)) {
 
     // Initialize file if it was just created.
     if (mmap_size == 0) {
-        this->conf = conf.value_or({
-            4096,
-            4096,
-            32,
-            4096,
-            4096,
-            8,
-            true
-        });
+        if (conf) this->conf = conf.value();
 
-        mmap_size = align_bytes(init_size, this->conf.sys_page_size);
-        Size min_size = this->conf.sys_page_size * 2;
+        mmap_size = align_bytes(init_size, this->conf.get_sys_page_size());
+        Size min_size = this->conf.get_sys_page_size() * 2;
 
         if (mmap_size < min_size) mmap_size = min_size; // Need one page for shared state and one for alloc page at min.
 
@@ -569,13 +583,13 @@ filepath(std::move(filepath)) {
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    if (mprotect(shared_state, this->conf.sys_page_size, PROT_READ | PROT_WRITE) == -1) {
+    if (mprotect(shared_state, this->conf.get_sys_page_size(), PROT_READ | PROT_WRITE) == -1) {
         cleanup();
         throw std::runtime_error("Errno: " + std::to_string(errno));
     }
 
-    mmap_size -= this->conf.sys_page_size;
-    base = ((unsigned char *) shared_state) + this->conf.sys_page_size;
+    mmap_size -= this->conf.get_sys_page_size();
+    base = ((unsigned char *) shared_state) + this->conf.get_sys_page_size();
 
     if (is_new) {
         shared_state->mmap_size = mmap_size;
@@ -588,7 +602,7 @@ filepath(std::move(filepath)) {
         shared_state->rev_lock.init();
         shared_state->resize_rw_lock.init();
 
-        shared_state->top = this->conf.small_align; // 0 is null
+        shared_state->top = this->conf.get_small_align(); // 0 is null
 
         // The rest is zeroed by ftruncate
     }
@@ -625,7 +639,7 @@ Revision *FFDB::register_revision(Offset root, Id txn_id) {
     if (!found) {
         if (found_rev == nullptr) {
             // TODO: Am I sure about sys instead of log?
-            size_t max_revisions = (conf.sys_page_size - sizeof(SharedState)) / sizeof(Revision);
+            size_t max_revisions = (conf.get_sys_page_size() - sizeof(SharedState)) / sizeof(Revision);
             if (shared_state->revision_count >= max_revisions) {
                 shared_state->rev_lock.unlock();
                 throw std::runtime_error("No more revisions available");

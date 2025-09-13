@@ -164,7 +164,7 @@ private:
             }
 
             // Insert the new key
-            x->key_values[i + 1].key = FFDBKey<T>(key);
+            x->key_values[i + 1].key = key;
             x->key_values[i + 1].value = value;
             x->n = x->n + 1;
 
