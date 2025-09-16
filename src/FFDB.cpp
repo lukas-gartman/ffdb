@@ -1,4 +1,5 @@
 #include "FFDB.h"
+#include "Memutils.h"
 
 #include <fcntl.h>
 #include <stdexcept>
@@ -6,45 +7,6 @@
 #include <sys/mman.h>
 #include <cmath>
 #include <map>
-
-/** \brief Align `bytes` depending on amount.
- *
- *  This function aligns the given `bytes` to \ref SMALL_ALIGNMENT or \ref LARGE_ALIGNMENT depending on whether `bytes`
- *  is larger than or equal to \ref ALIGNMENT_THRESHOLD.
- *
- *  @param bytes the bytes to align
- *  @return the aligned bytes
- */
-static Size align_bytes(Size bytes, Size alignment) {
-    return (bytes + alignment - 1) & ~(alignment - 1);
-}
-
-/** \brief Calculate the number of bytes left logical page that has `offset`.
- *
- *  This function calculates the number of bytes left in the logical page that contains the given `offset`. It does so
- *  rather efficiently so it can be called often without performance concerns.
- *
- *  @param offset the offset from which to calculate the bytes left in the logical page
- *  @return the bytes left in the logical page
- */
-static Size bytes_left_in_page(Offset offset, Size log_page_size) {
-    return log_page_size - (offset & (log_page_size - 1));
-}
-
-/** \brief Find the next power of 2 that fits the sum of both arguments.
- *
- *  This function calculates the next size that is a power of 2 and fits the sum of `min_size` and `curr_size`. This is
- *  done by solving the equation `2^n >= min_size + curr_size`, where `n` is the smallest integer such that the equation
- *  holds, and then returning `2^n`.
- *
- *  @param curr_size the current size of the memory map
- *  @param min_size the minimum additional size we need
- *  @return `2^n` where `n` is the smallest integer such that `2^n >= min_size + curr_size`.
- */
-static Size next_size(const Size curr_size, const Size min_size) {
-    const Size n = ceil(log2((double) (min_size + curr_size)));
-    return 1 << n;
-}
 
 Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
@@ -80,7 +42,6 @@ Offset FFDB::malloc_internal(Size bytes) {
     writer_state.free_blocks = new_tree;
     offset = found_block.ofs;
     if (offset != 0) {
-        validate_tree(writer_state.free_blocks);
         if (found_block.size > bytes)
             set_lf_block({offset + bytes, found_block.size - bytes, found_block.txn_id});
 
@@ -107,7 +68,6 @@ Offset FFDB::malloc_internal(Size bytes) {
             lo_block.size -= bd_size;
 
             writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, lo_block);
-            validate_tree(writer_state.free_blocks);
             bytes_left -= bd_size; // Update bytes_left because ins_bd_descr updated writer_state.top.
             lo_block = {0, 0, 0};
         }
@@ -170,7 +130,6 @@ void FFDB::free_internal(Offset offset, Size bytes) {
 
         // Otherwise, it will get replaced.
         writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, writer_state.lf_block);
-        validate_tree(writer_state.free_blocks);
     }
 
     // 0 as an id here means that the last free block is located beyond
@@ -187,7 +146,6 @@ void FFDB::set_lf_block(Block lf_block) {
             writer_state.free_blocks,
             writer_state.lf_block
         );
-        validate_tree(writer_state.free_blocks);
     }
 
     writer_state.lf_block = lf_block;
@@ -249,9 +207,7 @@ Ref<BlockDescr> FFDB::upd_bd_tree_node(Ref<BlockDescr> tree, Ref<BlockDescr> lef
 }
 
 Ref<BlockDescr> FFDB::ins_bd_tree(Ref<BlockDescr> tree, Block block) {
-    if (tree == 0) {
-        return new_block_descr(block, 0, 0);
-    }
+    if (tree == 0) return new_block_descr(block, 0, 0);
 
     bool traverse_left =
         block.size != tree->block.size ? block.size < tree->block.size :
@@ -259,22 +215,19 @@ Ref<BlockDescr> FFDB::ins_bd_tree(Ref<BlockDescr> tree, Block block) {
         get_size(tree->tree_left) < get_size(tree->tree_right);
 
     if (traverse_left) {
-        auto new_left = ins_bd_tree(tree->tree_left, block);
         tree = upd_bd_tree_node(
             tree,
-            new_left,
+            ins_bd_tree(tree->tree_left, block),
             tree->tree_right
         );
         tree = balancel_bd_tree(tree);
     }
     else {
-        auto new_right = ins_bd_tree(tree->tree_right, block);
         tree = upd_bd_tree_node(
             tree,
             tree->tree_left,
-            new_right
+            ins_bd_tree(tree->tree_right, block)
         );
-
         tree = balancer_bd_tree(tree);
     }
 
@@ -317,7 +270,6 @@ std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size b
         // We have found a fitting block. Return.
         if (found_block.ofs != 0) {
             tree = balancer_bd_tree(upd_bd_tree_node(tree, new_tree_left, tree->tree_right));
-
             return std::make_pair(tree, found_block);
         }
 
@@ -390,28 +342,20 @@ std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::pop_last_bd(Ref<BlockDescr> tr
     return std::make_pair(tree, bd_to_remove);
 }
 
-/*Ref<BlockDescr> FFDB::maintain_bd_tree(Ref<BlockDescr> tree) {
-
-}*/
-
 Ref<BlockDescr> FFDB::rotl_bd_tree_node(Ref<BlockDescr> tree) {
-    if (tree == 0) return tree;
+    if (tree == 0 || tree->tree_right) return tree;
+
     auto right = tree->tree_right;
-
-    if (right == 0) return tree;
-
-    auto right_left = right ? right->tree_left : 0;
+    auto right_left = right->tree_left;
     auto new_left = upd_bd_tree_node(tree, tree->tree_left, right_left);
     return upd_bd_tree_node(right, new_left, right->tree_right);
 }
 
 Ref<BlockDescr> FFDB::rotr_bd_tree_node(Ref<BlockDescr> tree) {
-    if (tree == 0) return tree;
+    if (tree == 0 || tree->tree_left == 0) return tree;
+
     auto left = tree->tree_left;
-
-    if (left == 0) return tree;
-
-    auto left_right = left ? left->tree_right : 0;
+    auto left_right = left->tree_right;
     auto new_right = upd_bd_tree_node(tree, left_right, tree->tree_right);
     return upd_bd_tree_node(left, left->tree_left, new_right);
 }
@@ -423,10 +367,9 @@ Ref<BlockDescr> FFDB::balancel_bd_tree(Ref<BlockDescr> tree) {
     auto left = tree->tree_left;
     auto [left_left, left_right] = get_children(left);
 
-    if (get_size(left) > 3 * get_size(right)) {
-        if (get_size(left_right) < 2 * get_size(left_left)) {
+    if (get_size(left) > conf.get_bdtree_delta() * get_size(right)) {
+        if (get_size(left_right) < conf.get_bdtree_gamma() * get_size(left_left))
             tree = rotr_bd_tree_node(tree);
-        }
         else {
             auto new_left = rotl_bd_tree_node(left);
             tree = upd_bd_tree_node(tree, new_left, right);
@@ -444,10 +387,9 @@ Ref<BlockDescr> FFDB::balancer_bd_tree(Ref<BlockDescr> tree) {
     auto left = tree->tree_left;
     auto [right_left, right_right] = get_children(right);
 
-    if (get_size(right) > 3 * get_size(left)) {
-        if (get_size(right_left) < 2 * get_size(right_right)) {
+    if (get_size(right) > conf.get_bdtree_delta() * get_size(left)) {
+        if (get_size(right_left) < conf.get_bdtree_gamma() * get_size(right_right))
             tree = rotl_bd_tree_node(tree);
-        }
         else {
             auto new_right = rotr_bd_tree_node(right);
             tree = upd_bd_tree_node(tree, left, new_right);
@@ -502,7 +444,7 @@ void FFDB::resize_map(Size min_size) {
     // It may happen that another process already resized the map, in
     // that case we only need to remap the memory and update size.
     const size_t new_size =
-        shared_state->mmap_size != mmap_size ? shared_state->mmap_size : next_size(mmap_size, min_size);
+        shared_state->mmap_size != mmap_size ? shared_state->mmap_size : next_pow2_size(mmap_size, min_size);
 
     // Should not need to check fd >= 0 as we don't support anon mappings.
     if (shared_state->mmap_size != new_size) {
@@ -683,7 +625,7 @@ void FFDB::unregister_revision(Revision *rev) {
     shared_state->rev_lock.unlock();
 }
 
-// TDOD: Use these three functions to connect all code.
+// TODO: Use these three functions to connect all code.
 
 void FFDB::start_txn(DBMode mode) {
     db_mode = mode;

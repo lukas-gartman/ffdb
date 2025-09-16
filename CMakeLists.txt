@@ -28,6 +28,7 @@ else()
         tests/test_btree.cpp
         tests/test_btree_functional.cpp
         tests/test_sbt.cpp
+            tests/test_sbt_functional.cpp
         tests/test_ffdb_key.cpp
         ${FFDB_SOURCES}
     )
@@ -54,4 +55,5 @@ endif()
 add_executable(ffdb
     src/main.cpp
     ${FFDB_SOURCES}
+        src/Memutils.h
 )

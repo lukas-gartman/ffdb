@@ -69,21 +69,30 @@ private:
     Size small_align;
     Size large_align;
     Size align_threshold;
+    Size bdtree_delta;
+    Size bdtree_gamma;
     bool page_boundry_aware;
 
 public:
-    DBConf(Size sys_page_size, Size log_page_size, Size small_align, Size large_align,
-           Size align_threshold, bool page_boundry_aware):
-        sys_page_size(sys_page_size), log_page_size(log_page_size), small_align(small_align), large_align(large_align),
-        align_threshold(align_threshold), page_boundry_aware(page_boundry_aware) {}
+    DBConf(
+        Size sys_page_size, Size log_page_size,
+        Size small_align, Size large_align, Size align_threshold,
+        Size bdtree_delta, Size bdtree_gamma, bool page_boundry_aware
+    ):
+    sys_page_size(sys_page_size), log_page_size(log_page_size),
+    small_align(small_align), large_align(large_align), align_threshold(align_threshold),
+    bdtree_delta(bdtree_delta), bdtree_gamma(bdtree_gamma),
+    page_boundry_aware(page_boundry_aware) {}
 
-    DBConf() : DBConf(4096, 4096, 16, 4096, 4096, true) {};
+    DBConf() : DBConf(4096, 4096, 16, 4096, 4096, 3, 2, true) {};
 
     Size get_sys_page_size() const { return sys_page_size; }
     Size get_log_page_size() const { return log_page_size; }
     Size get_small_align() const { return small_align; }
     Size get_large_align() const { return large_align; }
     Size get_align_threshold() const { return align_threshold; }
+    Size get_bdtree_delta() const { return bdtree_delta; }
+    Size get_bdtree_gamma() const { return bdtree_gamma; }
     bool is_page_boundry_aware() const { return page_boundry_aware; }
 };
 
@@ -252,8 +261,8 @@ public:
     bool is_balanced(Ref<BlockDescr> tree) {
         if (tree == 0) return true;
         return get_size(tree->tree_left) + get_size(tree->tree_right) <= 1
-            || get_size(tree->tree_left) <= 3 * get_size(tree->tree_right)
-            && get_size(tree->tree_right) <= 3 * get_size(tree->tree_left)
+            || get_size(tree->tree_left) <= conf.get_bdtree_delta() * get_size(tree->tree_right)
+            && get_size(tree->tree_right) <= conf.get_bdtree_delta() * get_size(tree->tree_left)
             && is_balanced(tree->tree_left) && is_balanced(tree->tree_right);
     }
 };
