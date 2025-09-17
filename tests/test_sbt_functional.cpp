@@ -69,61 +69,75 @@ TEST(SBTTestFunctional, InOrderTraversal) {
     db.commit_txn();
     remove("test.db");
 }
-/*
+
 TEST(SBTTestFunctional, CopyOnWrite) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    using SBT = SBTFunctional<int, float>;
 
     // create initial tree
     db.start_txn(DB_WRITE_TXN);
-    SBT::SBT<int, float> tree;
-    tree.insert(1, 1.0f);
-    tree.insert(2, 2.0f);
-    tree.insert(3, 3.0f);
-    auto tree_copy1 = tree; // snapshot
+    auto tree1 = SBT::empty();
+    tree1 = SBT::insert(tree1, 1, 1.0f);
+    tree1 = SBT::insert(tree1, 2, 2.0f);
+    tree1 = SBT::insert(tree1, 3, 3.0f);
     db.commit_txn();
 
     // modify tree
     db.start_txn(DB_WRITE_TXN);
-    tree.insert(4, 4.0f);
-    tree.remove(2);
-    auto tree_copy2 = tree; // snapshot
+    auto tree2 = SBT::insert(tree1, 4, 4.0f);
+    tree2 = SBT::remove(tree2, 2);
     db.commit_txn();
 
     // further modify
     db.start_txn(DB_WRITE_TXN);
-    tree.insert(5, 5.0f);
-    tree.remove(1);
+    auto tree3 = SBT::insert(tree2, 5, 5.0f);
+    tree3 = SBT::remove(tree3, 1);
+    db.commit_txn();
+
+    db.start_txn(DB_WRITE_TXN);
+    auto tree4 = SBT::update_value(tree3, 3, [](float v){ return ++v; });
+    tree4 = SBT::update_value(tree4, 4, [](float v){ return v - 4; });
+    tree4 = SBT::update_value(tree4, 5, [](float v){ return 500; });
+    SBT::print(tree4); std::cout << std::endl;
     db.commit_txn();
 
     // Check snapshots
     float value = 0;
     // tree_copy1: 1,2,3
-    EXPECT_TRUE(tree_copy1.search(1, value));
-    EXPECT_TRUE(tree_copy1.search(2, value));
-    EXPECT_TRUE(tree_copy1.search(3, value));
-    EXPECT_FALSE(tree_copy1.search(4, value));
-    EXPECT_FALSE(tree_copy1.search(5, value));
-    EXPECT_EQ(tree_copy1.size(), 3);
+    EXPECT_TRUE(SBT::get_value(tree1, 1) == 1.0f);
+    EXPECT_TRUE(SBT::get_value(tree1, 2) == 2.0f);
+    EXPECT_TRUE(SBT::get_value(tree1, 3) == 3.0f);
+    EXPECT_FALSE(SBT::get_value(tree1, 4) == 4.0f);
+    EXPECT_FALSE(SBT::get_value(tree1, 5) == 5.0f);
+    EXPECT_EQ(SBT::get_size(tree1), 3);
 
     // tree_copy2: 1,3,4
-    EXPECT_TRUE(tree_copy2.search(1, value));
-    EXPECT_FALSE(tree_copy2.search(2, value));
-    EXPECT_TRUE(tree_copy2.search(3, value));
-    EXPECT_TRUE(tree_copy2.search(4, value));
-    EXPECT_FALSE(tree_copy2.search(5, value));
-    EXPECT_EQ(tree_copy2.size(), 3);
+    EXPECT_TRUE(SBT::get_value(tree2, 1) == 1.0f);
+    EXPECT_FALSE(SBT::get_value(tree2, 2) == 2.0f);
+    EXPECT_TRUE(SBT::get_value(tree2, 3) == 3.0f);
+    EXPECT_TRUE(SBT::get_value(tree2, 4) == 4.0f);
+    EXPECT_FALSE(SBT::get_value(tree2, 5) == 5.0f);
+    EXPECT_EQ(SBT::get_size(tree2), 3);
 
     // tree: 3,4,5
-    EXPECT_FALSE(tree.search(1, value));
-    EXPECT_FALSE(tree.search(2, value));
-    EXPECT_TRUE(tree.search(3, value));
-    EXPECT_TRUE(tree.search(4, value));
-    EXPECT_TRUE(tree.search(5, value));
-    EXPECT_EQ(tree.size(), 3);
+    EXPECT_FALSE(SBT::get_value(tree3, 1) == 1.0f);
+    EXPECT_FALSE(SBT::get_value(tree3, 2) == 2.0f);
+    EXPECT_TRUE(SBT::get_value(tree3, 3) == 3.0f);
+    EXPECT_TRUE(SBT::get_value(tree3, 4) == 4.0f);
+    EXPECT_TRUE(SBT::get_value(tree3, 5) == 5.0f);
+    EXPECT_EQ(SBT::get_size(tree3), 3);
+
+
+    EXPECT_FALSE(SBT::get_value(tree4, 1) == 1.0f);
+    EXPECT_FALSE(SBT::get_value(tree4, 2) == 2.0f);
+    EXPECT_TRUE(SBT::get_value(tree4, 3) == 4.0f);
+    EXPECT_TRUE(SBT::get_value(tree4, 4) == 0.0f);
+    EXPECT_TRUE(SBT::get_value(tree4, 5) == 500.0f);
+    EXPECT_EQ(SBT::get_size(tree4), 3);
 
     remove("test.db");
 }
-
+/*
 TEST(SBTTestFunctional, Update) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
     db.start_txn(DB_WRITE_TXN);

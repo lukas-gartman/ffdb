@@ -295,7 +295,7 @@ std::pair<Ref<BlockDescr>, Block> FFDB::del_bd_tree(Ref<BlockDescr> tree, Size b
             tree = balancer_bd_tree(upd_bd_tree_node(new_tree, new_left, tree->tree_right));
         }
         else {
-            auto [new_tree, new_right] = pop_last_bd(tree->tree_right);
+            auto [new_tree, new_right] = pop_first_bd(tree->tree_right);
             tree = balancel_bd_tree(upd_bd_tree_node(new_tree, tree->tree_left, new_right));
         }
     }
@@ -343,7 +343,7 @@ std::pair<Ref<BlockDescr>, Ref<BlockDescr>> FFDB::pop_last_bd(Ref<BlockDescr> tr
 }
 
 Ref<BlockDescr> FFDB::rotl_bd_tree_node(Ref<BlockDescr> tree) {
-    if (tree == 0 || tree->tree_right) return tree;
+    if (tree == 0 || tree->tree_right == 0) return tree;
 
     auto right = tree->tree_right;
     auto right_left = right->tree_left;

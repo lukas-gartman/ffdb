@@ -161,55 +161,53 @@ private:
     }
 
     template<ValidKeyArg<T> K>
-    static NodeRef insert_rec(NodeRef tree, const K &key, V value) {
-        if (!tree) return create_node({key, value}, 0, 0);
+    static std::pair<NodeRef, bool> insert_rec(NodeRef tree, const K &key, V value) {
+        if (!tree) return std::make_pair(create_node({key, value}, 0, 0), true);
 
         if (tree->key_value.key > key) {
-            auto new_left = insert(tree->left, key, value);
-            if (new_left) {
+            auto [new_left, kv_inserted] = insert_rec(tree->left, key, value);
+            if (kv_inserted) {
                 tree = upd_node(tree, new_left, tree->right);
-                return balancel(tree);
+                return std::make_pair(balancel(tree), true);
             }
         }
         else if (tree->key_value.key < key) {
-            auto new_right = insert(tree->right, key, value);
-            if (new_right) {
+            auto [new_right, kv_inserted] = insert_rec(tree->right, key, value);
+            if (kv_inserted) {
                 tree = upd_node(tree, tree->left, new_right);
-                return balancer(tree);
+                return std::make_pair(balancer(tree), true);
             }
         }
 
-        return REF_NULL;
+        return std::make_pair(tree, false);
     }
 
     template<ValidKeyArg<T> K>
-static NodeRef remove_rec(NodeRef tree, const K &key) {
-        if (!tree) return REF_NULL;
+    static std::pair<NodeRef, bool> remove_rec(NodeRef tree, const K &key) {
+        if (!tree) return std::make_pair(tree, false);
 
         if (tree->key_value.key > key) {
-            auto new_left = remove_rec(tree->left, key);
-            if (new_left)
-                return balancer(upd_node(tree, new_left, tree->right));
-            return REF_NULL;
+            auto [new_left, key_removed] = remove_rec(tree->left, key);
+            if (key_removed)
+                return std::make_pair(balancer(upd_node(tree, new_left, tree->right)), true);
+            return std::make_pair(tree, false);
         }
         if (tree->key_value.key < key) {
-            auto new_right = remove_rec(tree->right, key);
-            if (new_right)
-                return balancel(upd_node(tree, tree->left, new_right));
-            return REF_NULL;
+            auto [new_right, key_removed] = remove_rec(tree->right, key);
+            if (key_removed)
+                return std::make_pair(balancel(upd_node(tree, tree->left, new_right)), true);
+            return std::make_pair(tree, false);
         }
 
         // found node to delete
         auto old_node = tree;
 
-        if (!tree->left) {
-            tree = tree->right;
-        } else if (!tree->right) {
-            tree = tree->left;
-        } else {
+        if (!tree->left) tree = tree->right;
+        else if (!tree->right)tree = tree->left;
+        else {
             if (tree->left->size > tree->right->size) {
-                auto [new_left, popped_node] = pop_last(tree->left);
-                tree = balancer(upd_node(popped_node, new_left, tree->right));
+                auto [new_tree, new_left] = pop_last(tree->left);
+                tree = balancer(upd_node(new_tree, new_left, tree->right));
             } else {
                 auto [new_right, popped_node] = pop_first(tree->right);
                 tree = balancel(upd_node(popped_node, tree->left, new_right));
@@ -217,7 +215,28 @@ static NodeRef remove_rec(NodeRef tree, const K &key) {
         }
 
         free_node(old_node);
-        return tree;
+        return std::make_pair(tree, true);
+    }
+
+    template <ValidKeyArg<T> K>
+    static std::pair<NodeRef, bool> update_value_rec(NodeRef tree, const K &key, std::function<V(V)> f) {
+        if (!tree) return std::make_pair(tree, false);
+
+        if (tree->key_value.key > key) {
+            auto [new_left, node_updated] = update_value_rec(tree->left, key, f);
+            if (node_updated) return std::make_pair(upd_node(tree, new_left, tree->right), true);
+            return std::make_pair(tree, false);
+        }
+        if (tree->key_value.key < key)  {
+            auto [new_right, node_updated] = update_value_rec(tree->right, key, f);
+            if (node_updated) return std::make_pair(upd_node(tree, tree->left, new_right), true);
+            return std::make_pair(tree, false);
+        }
+
+        auto new_tree = upd_node(tree, tree->left, tree->right);
+        new_tree->key_value.value = f(new_tree->key_value.value);
+
+        return std::make_pair(new_tree, true);
     }
 
     static std::pair<NodeRef, NodeRef> get_children(NodeRef tree) {
@@ -234,15 +253,13 @@ public:
 
     template<ValidKeyArg<T> K>
     static NodeRef insert(NodeRef tree, const K &key, V value) {
-        auto new_tree = insert_rec(tree, key, value);
-        if (!new_tree) return tree;
+        auto [new_tree, _] = insert_rec(tree, key, value);
         return new_tree;
     }
 
     template<ValidKeyArg<T> K>
     static NodeRef remove(NodeRef tree, const K &key) {
-        auto new_tree = remove_rec(tree, key);
-        if (!new_tree) return tree;
+        auto [new_tree, _] = remove_rec(tree, key);
         return new_tree;
     }
 
@@ -265,23 +282,46 @@ public:
         return get_value(tree, key) != std::nullopt;
     }
 
-    static void traverse(NodeRef tree, std::function<void(const KeyValue<T,V>&)> f){
+    static void traverse_inorder(NodeRef tree, std::function<void(const KeyValue<T,V>&)> f){
         if (!tree) return;
 
-        traverse(tree->left, f);
+        traverse_inorder(tree->left, f);
         f(tree->key_value);
-        traverse(tree->right, f);
+        traverse_inorder(tree->right, f);
     }
 
     static std::vector<V> values(NodeRef tree) {
         std::vector<V> result;
         result.reserve(get_size(tree));
 
-        traverse(tree, [&](const KeyValue<T,V> &kv) {
+        traverse_inorder(tree, [&](const KeyValue<T,V> &kv) {
             result.push_back(kv.value);
         });
 
         return result;
+    }
+
+    template <ValidKeyArg<T> K>
+    static NodeRef update_value(NodeRef tree, const K &key, std::function<V(V)> f) {
+        auto [new_tree, _] = update_value_rec(tree, key, f);
+        return new_tree;
+    }
+
+    static void print(NodeRef tree) {
+        // Recursive helper
+        std::function<void(NodeRef, std::string)> helper;
+        helper = [&](NodeRef node, std::string prefix) {
+            if (!node) {
+                std::cout << prefix << " NULL" << std::endl;
+                return;
+            }
+
+            std::cout << prefix << "(key: " << node->key_value.key << ", " << node->key_value.value << ", " << node->txn_id << ")" << std::endl;
+            helper(node->left, "    " + prefix);
+            helper(node->right, "    " + prefix);
+        };
+
+        helper(tree, "");
     }
 };
 
