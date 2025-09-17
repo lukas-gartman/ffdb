@@ -307,6 +307,11 @@ public:
         return new_tree;
     }
 
+    template <ValidKeyArg<T> K>
+    static NodeRef replace_value(NodeRef tree, const K &key, V value) {
+        return update_value(tree, key, [&](V v){ return value; });
+    }
+
     static void print(NodeRef tree) {
         // Recursive helper
         std::function<void(NodeRef, std::string)> helper;

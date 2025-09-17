@@ -97,7 +97,7 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     db.start_txn(DB_WRITE_TXN);
     auto tree4 = SBT::update_value(tree3, 3, [](float v){ return ++v; });
     tree4 = SBT::update_value(tree4, 4, [](float v){ return v - 4; });
-    tree4 = SBT::update_value(tree4, 5, [](float v){ return 500; });
+    tree4 = SBT::replace_value(tree4, 5, 500);
     SBT::print(tree4); std::cout << std::endl;
     db.commit_txn();
 
