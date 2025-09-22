@@ -111,6 +111,9 @@ private:
 
     static NodeRef split_child(NodeRef x, int i) {
         NodeRef y = upd_node(x->children[i]);
+        // Ensure parent points to the updated (CoW) child
+        x->children[i] = y;
+
         NodeRef z = create_node(y->is_leaf);
         z->n = t - 1;
 
