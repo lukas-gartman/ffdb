@@ -56,6 +56,56 @@ public:
 template <PrimitiveVal T, typename V, int t>
 using BTreeRef = Ref<BTreeHeader<T, V, t>>;
 
+template<PrimitiveVal T, typename V>
+constexpr int find_t(Size bytes) {
+    auto sizeof_node = [](int t) constexpr {
+        auto align = [](Size bytes, Size alignment) constexpr {
+            return (bytes + alignment - 1) & ~(alignment - 1);
+        };
+
+        constexpr int n = 5;
+        Size sizes[n] = {
+            sizeof(KeyValue<T, V>) * (2 * t - 1),
+            sizeof(Ref<void>) * 2 * t,
+            sizeof(Size),
+            sizeof(int),
+            sizeof(bool)
+        };
+        Size alignments[n] = {
+            alignof(KeyValue<T, V>),
+            alignof(Ref<void>),
+            alignof(Size),
+            alignof(int),
+            alignof(bool)
+        };
+
+        Size max_align = std::max({
+            alignof(KeyValue<T, V>),
+            alignof(Ref<void>),
+            alignof(Size),
+            alignof(int),
+            alignof(bool)
+        });
+
+        Size total_size = 0;
+        for (int i = 0; i < n; i++) {
+            total_size = align(total_size, alignments[i]);
+            total_size += sizes[i];
+        }
+
+        return align(total_size, max_align);
+    };
+
+    int best_t = 0;
+    for (int t = 2; t < bytes; t++) {
+        if (sizeof_node(t) > bytes) break;
+        best_t = t;
+    }
+
+    return best_t;
+}
+
+
 template<PrimitiveVal T, typename V, int t>
 class BTreeFunctional {
 private:

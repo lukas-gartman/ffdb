@@ -9,13 +9,15 @@
 #include <random>
 #include <unordered_set>
 
-TEST(BTreeFunctionalTest, TESTILINGUS) {
-    using BT = BTreeFunctional<int, float, 3>;
-
+TEST(BTreeFunctionalTest, FindTTest) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
     db.start_txn(DB_WRITE_TXN);
+
+    constexpr int t = find_t<double, char>(4096);
+    EXPECT_TRUE(sizeof(Node<double, char, t>) <= 4096);
+    EXPECT_TRUE(sizeof(Node<double, char, t + 1>) > 4096);
 
     db.commit_txn();
 
