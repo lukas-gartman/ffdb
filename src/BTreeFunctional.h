@@ -25,14 +25,11 @@ struct KeyValue {
     V  value;
 };
 
-template <int t> constexpr int chld_size = 2 * t;
-template <int t> constexpr int kv_size = chld_size<t> - 1;
-
 template <PrimitiveVal T, typename V, int t>
 class Node {
 private:
-    KeyValue<T, V> key_values[kv_size<t>];
-    Ref<Node> children[chld_size<t>];
+    KeyValue<T, V> key_values[2 * t - 1];
+    Ref<Node> children[2 * t];
     Id txn_id;
     int n; // Number of keys in the node
     bool is_leaf;
@@ -67,11 +64,11 @@ private:
         auto node = current_db()->malloc<Node<T, V, t>>();
         new (&*node) Node<T, V, t>(current_db()->get_txn_id(), 0, is_leaf);
 
-        for (int i = 0; i < kv_size<t>; ++i) {
+        for (int i = 0; i < 2 * t - 1; ++i) {
             node->key_values[i].key = T();
             node->children[i] = REF_NULL;
         }
-        node->children[chld_size<t> - 1] = REF_NULL;
+        node->children[2 * t - 1] = REF_NULL;
 
         return node;
     }
@@ -182,7 +179,7 @@ private:
         ++i; // Increment i to find the child
 
         // Split the child if it is full
-        if (x->children[i]->n == chld_size<t> - 1) {
+        if (x->children[i]->n == 2 * t - 1) {
             x = split_child(upd_node(x), i);
 
             // Determine which of the two children to insert the new key into
