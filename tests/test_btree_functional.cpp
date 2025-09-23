@@ -254,6 +254,8 @@ TEST(BTreeFunctionalTest, RemoveTestCoW) {
     auto res3 = BT::remove(tree, 12); tree = res3.first;
     db.commit_txn();
 
+
+
     EXPECT_TRUE(BT::key_exists(tree_copy1, 10));
     EXPECT_TRUE(BT::key_exists(tree_copy1, 20));
     EXPECT_TRUE(BT::key_exists(tree_copy1, 5));
@@ -276,6 +278,47 @@ TEST(BTreeFunctionalTest, RemoveTestCoW) {
     EXPECT_TRUE(BT::key_exists(tree, 30));
     EXPECT_TRUE(BT::key_exists(tree, 17));
     EXPECT_EQ(BT::size(tree), 5);
+
+    remove("test.db");
+}
+
+TEST(BTreeFunctionalTest, OtherFunCow) {
+    using BT = BTreeFunctional<int, float, 3>;
+
+    remove("test.db");
+    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+
+    db.start_txn(DB_WRITE_TXN);
+    auto tree = BT::empty();
+    tree = BT::insert(tree, 10, 1.0f);
+    tree = BT::insert(tree, 20, 2.0f);
+    tree = BT::insert(tree, 5,  3.0f);
+    tree = BT::insert(tree, 6,  4.0f);
+    tree = BT::insert(tree, 12, 5.0f);
+    tree = BT::insert(tree, 30, 6.0f);
+    auto tree_copy = tree;
+    db.commit_txn();
+
+    db.start_txn(DB_WRITE_TXN);
+    tree = BT::replace_value(tree, 10, 99.0f);
+    tree = BT::replace_value(tree, 5, 50.0f);
+    tree = BT::update_value(tree, 10, [](float v){ return v + 1; });
+    tree = BT::update_value(tree, 30, [](float v){ return std::max(v, 200.0f); });
+    db.commit_txn();
+
+    EXPECT_TRUE(BT::get_value(tree_copy, 10).value_or(-1.0f) == 1.0f);
+    EXPECT_TRUE(BT::get_value(tree_copy, 20).value_or(-1.0f) == 2.0f);
+    EXPECT_TRUE(BT::get_value(tree_copy, 5).value_or(-1.0f) == 3.0f);
+    EXPECT_TRUE(BT::get_value(tree_copy, 6).value_or(-1.0f) == 4.0f);
+    EXPECT_TRUE(BT::get_value(tree_copy, 12).value_or(-1.0f) == 5.0f);
+    EXPECT_TRUE(BT::get_value(tree_copy, 30).value_or(-1.0f) == 6.0f);
+
+    EXPECT_TRUE(BT::get_value(tree, 10).value_or(-1.0f) == 100.0f);
+    EXPECT_TRUE(BT::get_value(tree, 20).value_or(-1.0f) == 2.0f);
+    EXPECT_TRUE(BT::get_value(tree, 5).value_or(-1.0f) == 50.0f);
+    EXPECT_TRUE(BT::get_value(tree, 6).value_or(-1.0f) == 4.0f);
+    EXPECT_TRUE(BT::get_value(tree, 12).value_or(-1.0f) == 5.0f);
+    EXPECT_TRUE(BT::get_value(tree, 30).value_or(-1.0f) == 200.0f);
 
     remove("test.db");
 }
