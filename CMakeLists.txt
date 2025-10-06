@@ -4,15 +4,16 @@ project(ffdb)
 set(CMAKE_CXX_STANDARD 20)
 
 set(FFDB_SOURCES
-        src/FFDB.cpp
-        src/FFDB.h
+    src/FFDB.cpp
+    src/FFDB.h
     src/Typedefs.cpp
     src/Typedefs.h
     src/BTree.h
-        src/BTreeFunctional.h
+    src/BTreeFunctional.h
     src/Synch.h
     src/SBT.h
     src/FFDBKey.h
+    src/Memutils.h
 )
 
 # Check if the googletest submodule exists
@@ -28,7 +29,7 @@ else()
         tests/test_btree.cpp
         tests/test_btree_functional.cpp
         tests/test_sbt.cpp
-            tests/test_sbt_functional.cpp
+        tests/test_sbt_functional.cpp
         tests/test_ffdb_key.cpp
         ${FFDB_SOURCES}
     )
@@ -47,6 +48,7 @@ else()
         benchmarks/main.cpp
         benchmarks/btree_bench.cpp
         #benchmarks/sbt_bench.cpp
+        benchmarks/utils.cpp
         ${FFDB_SOURCES}
     )
     target_link_libraries(ffdb_benchmarks benchmark::benchmark pthread)
@@ -55,5 +57,4 @@ endif()
 add_executable(ffdb
     src/main.cpp
     ${FFDB_SOURCES}
-        src/Memutils.h
 )
