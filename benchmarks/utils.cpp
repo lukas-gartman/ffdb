@@ -18,10 +18,7 @@ std::vector<std::string> read_words_file(const std::string &filename) {
     auto begin = std::sregex_iterator(content.begin(), content.end(), word_re);
     auto end = std::sregex_iterator();
     for (auto it = begin; it != end; ++it) {
-        std::string w = it->str();
-        // normalize: to lower
-        std::transform(w.begin(), w.end(), w.begin(), [](unsigned char c){ return std::tolower(c); });
-        words.push_back(std::move(w));
+        words.emplace_back(it->str());
     }
     return words;
 }
