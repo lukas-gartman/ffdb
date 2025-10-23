@@ -1,10 +1,10 @@
 #ifndef FFDBKEY_H
 #define FFDBKEY_H
 
-#include <concepts>
 #include <array>
 #include <cstring>
 #include <variant>
+#include <vector>
 
 #include "FFDB.h"
 #include "Typedefs.h"
@@ -14,7 +14,6 @@ constexpr size_t PREFIX_SIZE = 8;
 template <PrimitiveVal T>
 class FFDBKey {
 public:
-    // The variant used is as big as this struct anyways so might as well store everything in this struct.
     struct LargeKey {
         std::byte key_prefix[PREFIX_SIZE];
         Ref<std::byte> key_ref;
@@ -28,15 +27,17 @@ public:
     FFDBKey(const T *key, Size n) {
         size = n * sizeof(T);
 
-        if (n == 1 && size <= PREFIX_SIZE) key_storage = *key;
-        else {
-            LargeKey lk;
+        if (n == 1 && size <= PREFIX_SIZE) {
+            key_storage = *key;
+        } else {
+            LargeKey lk{};
+            lk.key_ref = 0;
             std::memcpy(lk.key_prefix, key, std::min(PREFIX_SIZE, size));
 
             if (size > PREFIX_SIZE) {
                 Size of_size = size - PREFIX_SIZE;
                 lk.key_ref = current_db()->malloc<std::byte>(of_size);
-                std::memcpy(lk.key_ref, ((std::byte*) key) + PREFIX_SIZE, of_size);
+                std::memcpy(lk.key_ref, (std::byte*) key + PREFIX_SIZE, of_size);
             }
 
             key_storage = lk;
@@ -48,7 +49,27 @@ public:
 
     FFDBKey(const std::string &key): FFDBKey(key.c_str(), key.length() + 1) {}
 
-    FFDBKey(const T &key): FFDBKey(&key, 1) {}
+    FFDBKey(const T &key): FFDBKey(&key, 1) { }
+
+    FFDBKey deep_copy() const {
+        if (size == 0)  return FFDBKey();
+        if (std::holds_alternative<T>(key_storage)) return FFDBKey(std::get<T>(key_storage));
+
+        const LargeKey &lk = std::get<LargeKey>(key_storage);
+        LargeKey nl{};
+        std::memcpy(nl.key_prefix, lk.key_prefix, std::min(PREFIX_SIZE, size));
+        nl.key_ref = 0;
+        if (size > PREFIX_SIZE) {
+            Size of_size = size - PREFIX_SIZE;
+            nl.key_ref = current_db()->malloc<std::byte>(of_size);
+            std::memcpy(nl.key_ref, lk.key_ref, of_size);
+        }
+
+        FFDBKey key_copy;
+        key_copy.size = size;
+        key_copy.key_storage = nl;
+        return key_copy;
+    }
 
     void free_ref() {
         if (std::holds_alternative<LargeKey>(key_storage)) {
@@ -170,10 +191,11 @@ public:
         else {
             const auto& lk = std::get<LargeKey>(key.key_storage);
 
-            T* result = new T[key.size / sizeof(T)];
+            // Avoid heap leak and only copy available bytes
+            std::vector<T> result(key.size / sizeof(T));
 
-            std::memcpy(result, lk.key_prefix, PREFIX_SIZE);
-            if (key.size > PREFIX_SIZE) std::memcpy(result + PREFIX_SIZE, lk.key_ref, key.size - PREFIX_SIZE);
+            std::memcpy(result.data(), lk.key_prefix, std::min(PREFIX_SIZE, key.size));
+            if (key.size > PREFIX_SIZE) std::memcpy((std::byte*)result.data() + PREFIX_SIZE, lk.key_ref, key.size - PREFIX_SIZE);
 
             if constexpr (std::is_same_v<T, char>) {
                 os << "\"";
