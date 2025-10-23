@@ -432,15 +432,15 @@ private:
     // parent assumed to be copied
     static std::pair<NodeRef<T, V, t>, bool> remove_from_non_leaf(NodeRef<T, V, t> parent, int i) {
         KeyValue<T, V> key_value = parent->key_values[i];
-        key_value.key.free_ref();
 
         if (parent->children[i]->n >= t) {
             // Left child has at least t keys so we replace the key with the largest key in
             // the left subtree and recursively remove the predecessor from the left child
             auto pred_kv = get_in_order_predecessor(parent, i);
-            parent->key_values[i] = pred_kv;
+            parent->key_values[i].key = pred_kv.key.deep_copy(); // Replace with deep copy to avoid aliasing with key being removed in child
+            parent->key_values[i].value = pred_kv.value;
 
-            // We already know pred_kv.key exists.
+            // Remove predecessor from left child
             auto [left_child, _] = remove(parent->children[i], pred_kv.key);
             parent->children[i] = left_child;
 
@@ -451,9 +451,10 @@ private:
             // Right child has at least t keys so we replace the key with the smallest key in
             // the right subtree and recursively remove the successor from the right child
             auto succ_kv = get_in_order_successor(parent, i);
-            parent->key_values[i] = succ_kv;
+            parent->key_values[i].key = succ_kv.key.deep_copy(); // Replace with deep copy to avoid aliasing with key being removed in child
+            parent->key_values[i].value = succ_kv.value;
 
-            // We already know succ_kv.key exists.
+            // Remove successor from right child
             auto [right_child, _] = remove(parent->children[i + 1], succ_kv.key);
             parent->children[i + 1] = right_child;
 
