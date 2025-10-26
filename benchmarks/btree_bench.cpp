@@ -78,9 +78,9 @@ static void run_wordcount_iteration(benchmark::State &state, size_t N, const std
             latencies.push_back(ns);
         }
 
-        db.set_new_txn_root(tree.as_offset());
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
+        db.set_new_txn_root(tree.as_offset());
         db.commit_txn();
 
         double p50, p95, p99;
@@ -207,9 +207,10 @@ static void run_insert_iteration(benchmark::State &state, size_t N, const std::v
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
             latencies.push_back(ns);
         }
-        db.set_new_txn_root(tree.as_offset());
+
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
+        db.set_new_txn_root(tree.as_offset());
         db.commit_txn();
 
         double p50, p95, p99;
@@ -224,11 +225,71 @@ static void run_insert_iteration(benchmark::State &state, size_t N, const std::v
 template <int DEGREE>
 static void Insert(benchmark::State &state) {
     auto N = (size_t) state.range(0);
-    std::string dbfile = "insert_only_" + std::to_string(N) + ".db";
+    std::string dbfile = "insert_" + std::to_string(N) + ".db";
     auto words_all = load_words();
     run_insert_iteration<DEGREE>(state, N, words_all, dbfile);
+}
+
+template <int DEGREE>
+static void run_remove_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+    for (auto _ : state) {
+        ::unlink(dbfile.c_str());
+
+        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
+        db.start_txn(DB_WRITE_TXN);
+
+        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        std::vector<std::string> keys;
+        build_unique_dataset(keys, words_all, N, "del:");
+        for (size_t i = 0; i < N; ++i) {
+            tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, keys[i], 1);
+        }
+
+        std::vector<std::string> del_keys;
+        build_unique_dataset(del_keys, words_all, N, "del:");
+
+        std::vector<double> latencies;
+        latencies.reserve(N);
+        size_t removed_cnt = 0;
+
+        auto total_start = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < N; ++i) {
+            auto op_start = std::chrono::steady_clock::now();
+            auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, del_keys[i]);
+            if (removed) {
+                tree = t2;
+                removed_cnt++;
+            }
+
+            auto op_end = std::chrono::steady_clock::now();
+            double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
+            latencies.push_back(ns);
+        }
+
+        auto total_end = std::chrono::steady_clock::now();
+        double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
+        db.set_new_txn_root(tree.as_offset());
+        db.commit_txn();
+
+        double p50, p95, p99;
+        compute_quantiles(latencies, p50, p95, p99);
+        state.counters["throughput_ops_ms"] = (double) N / (total_ns / 1e6);
+        state.counters["latency_p50_ns"] = p50;
+        state.counters["latency_p95_ns"] = p95;
+        state.counters["latency_p99_ns"] = p99;
+        state.counters["removed_pct"] = N == 0 ? 0.0 : 100.0 * (double)removed_cnt / (double)N;
+    }
+}
+
+template <int DEGREE>
+static void Remove(benchmark::State &state) {
+    auto N = (size_t) state.range(0);
+    std::string dbfile = "remove_" + std::to_string(N) + ".db";
+    auto words_all = load_words();
+    run_remove_iteration<DEGREE>(state, N, words_all, dbfile);
 }
 
 BENCHMARK_TEMPLATE(WordCount, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(RandomLookup, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(Insert, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Remove, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
