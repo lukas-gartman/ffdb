@@ -43,9 +43,9 @@ static void compute_quantiles(const std::vector<double> &l, double &p50, double 
     if (l.empty()) { p50 = p95 = p99 = 0; return; }
     std::vector<double> c = l;
     auto pick = [&](int pct) {
-        size_t idx = c.size() * pct / 100;
-        std::nth_element(c.begin(), c.begin() + idx, c.end());
-        return c[idx];
+        size_t i = c.size() * pct / 100;
+        std::nth_element(c.begin(), c.begin() + i, c.end());
+        return c[i];
     };
     p50 = pick(50);
     p95 = pick(95);
@@ -70,7 +70,7 @@ static void run_wordcount_iteration(benchmark::State &state, size_t N, const std
             auto op_start = std::chrono::steady_clock::now();
             auto t2 = BTreeFunctional<char, uint64_t, DEGREE>::update_value(
                 tree, words[i], [](uint64_t v){ return v + 1; });
-            tree = (t2 == tree)
+            tree = t2 == tree
                 ? BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, words[i], 1)
                 : t2;
             auto op_end = std::chrono::steady_clock::now();
@@ -104,7 +104,7 @@ static void WordCount(benchmark::State &state) {
     run_wordcount_iteration<DEGREE>(state, N, words, dbfile);
 }
 
-static void build_random_queries(const std::vector<std::string> &words, size_t N, std::vector<std::string> &queries, int miss_pct = 10, uint64_t seed = 123456789ULL) {
+static void build_random_queries(const std::vector<std::string> &words, size_t N, std::vector<std::string> &queries, int miss_pct = 10, uint64_t seed = 133769420ULL) {
     std::mt19937_64 rng(seed);
     std::uniform_int_distribution<size_t> pick(0, words.size() - 1);
     queries.clear();
@@ -240,13 +240,13 @@ static void run_remove_iteration(benchmark::State &state, size_t N, const std::v
 
         auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
         std::vector<std::string> keys;
-        build_unique_dataset(keys, words_all, N, "del:");
+        build_unique_dataset(keys, words_all, N, "rem:");
         for (size_t i = 0; i < N; ++i) {
             tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, keys[i], 1);
         }
 
-        std::vector<std::string> del_keys;
-        build_unique_dataset(del_keys, words_all, N, "del:");
+        std::vector<std::string> rem_keys;
+        build_unique_dataset(rem_keys, words_all, N, "rem:");
 
         std::vector<double> latencies;
         latencies.reserve(N);
@@ -255,7 +255,7 @@ static void run_remove_iteration(benchmark::State &state, size_t N, const std::v
         auto total_start = std::chrono::steady_clock::now();
         for (size_t i = 0; i < N; ++i) {
             auto op_start = std::chrono::steady_clock::now();
-            auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, del_keys[i]);
+            auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, rem_keys[i]);
             if (removed) {
                 tree = t2;
                 removed_cnt++;
@@ -289,7 +289,124 @@ static void Remove(benchmark::State &state) {
     run_remove_iteration<DEGREE>(state, N, words_all, dbfile);
 }
 
+enum class Op { LOOKUP, INSERT, REMOVE };
+
+static void build_mixed_ops(std::vector<Op> &ops, size_t total, uint64_t seed = 420691337ULL) {
+    size_t inserts = (total * 20) / 100;
+    size_t removes = (total * 10) / 100;
+    size_t lookups = total - inserts - removes;
+    ops.clear();
+    ops.reserve(total);
+    ops.insert(ops.end(), lookups, Op::LOOKUP);
+    ops.insert(ops.end(), inserts, Op::INSERT);
+    ops.insert(ops.end(), removes, Op::REMOVE);
+    std::mt19937_64 rng(seed);
+    std::shuffle(ops.begin(), ops.end(), rng);
+}
+
+template <int DEGREE>
+static void run_mixed_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+    for (auto _ : state) {
+        ::unlink(dbfile.c_str());
+
+        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
+        db.start_txn(DB_WRITE_TXN);
+
+        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        std::vector<std::string> base_keys;
+        build_unique_dataset(base_keys, words_all, N, "mix:");
+        for (size_t i = 0; i < base_keys.size(); ++i) {
+            tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, base_keys[i], 1);
+        }
+
+        // Determine operation mix counts
+        size_t inserts = (N * 20) / 100;
+        size_t removes = (N * 10) / 100;
+        size_t lookups = N - inserts - removes;
+
+        // Prepare keys/queries for operations
+        std::vector<std::string> ins_keys;
+        build_unique_dataset(ins_keys, words_all, inserts, "mix:ins:");
+
+        std::vector<std::string> rem_keys;
+        rem_keys.reserve(removes);
+        for (size_t i = 0; i < removes; ++i) rem_keys.push_back(base_keys[i]);
+
+        std::vector<std::string> queries;
+        build_random_queries(base_keys, lookups, queries, 10);
+
+        std::vector<Op> ops;
+        build_mixed_ops(ops, N);
+
+        std::vector<double> latencies;
+        latencies.reserve(N);
+
+        size_t look_i = 0, ins_i = 0, rem_i = 0;
+        size_t lookup_hits = 0, lookup_cnt = 0, removed_cnt = 0;
+
+        auto total_start = std::chrono::steady_clock::now();
+        for (Op op : ops) {
+            auto op_start = std::chrono::steady_clock::now();
+            if (op == Op::LOOKUP) {
+                if (look_i < queries.size()) {
+                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, queries[look_i++]);
+                    if (val.has_value()) lookup_hits++;
+                    lookup_cnt++;
+                } else {
+                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    (void)val;
+                }
+            } else if (op == Op::INSERT) {
+                if (ins_i < ins_keys.size()) {
+                    tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, ins_keys[ins_i++], 1);
+                } else {
+                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    (void)val;
+                }
+            } else { // Op::REMOVE
+                if (rem_i < rem_keys.size()) {
+                    auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, rem_keys[rem_i++]);
+                    if (removed) { tree = t2; removed_cnt++; }
+                } else {
+                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    (void)val;
+                }
+            }
+
+            auto op_end = std::chrono::steady_clock::now();
+            double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
+            latencies.push_back(ns);
+        }
+
+        auto total_end = std::chrono::steady_clock::now();
+        double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
+
+        db.set_new_txn_root(tree.as_offset());
+        db.commit_txn();
+
+        double p50, p95, p99;
+        compute_quantiles(latencies, p50, p95, p99);
+        state.counters["throughput_ops_ms"] = (double) N / (total_ns / 1e6);
+        state.counters["latency_p50_ns"] = p50;
+        state.counters["latency_p95_ns"] = p95;
+        state.counters["latency_p99_ns"] = p99;
+        state.counters["lookup_hit_rate_pct"] = lookup_cnt == 0 ? 0.0 : (100.0 * (double)lookup_hits / (double)lookup_cnt);
+        state.counters["removed_pct"] = removes == 0 ? 0.0 : (100.0 * (double)removed_cnt / (double)removes);
+    }
+}
+
+template <int DEGREE>
+static void Mixed(benchmark::State &state) {
+    auto N = (size_t) state.range(0);
+    std::string dbfile = "mixed_" + std::to_string(N) + ".db";
+
+    auto words_all = load_words();
+    run_mixed_iteration<DEGREE>(state, N, words_all, dbfile);
+}
+
 BENCHMARK_TEMPLATE(WordCount, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(RandomLookup, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(Insert, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(Remove, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Mixed, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
+
