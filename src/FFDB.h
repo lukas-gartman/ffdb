@@ -186,6 +186,8 @@ private:
     std::pair<Ref<BlockDescr>, Ref<BlockDescr>> pop_last_bd(Ref<BlockDescr> tree);
     Ref<BlockDescr> rotl_bd_tree_node(Ref<BlockDescr> tree);
     Ref<BlockDescr> rotr_bd_tree_node(Ref<BlockDescr> tree);
+    Ref<BlockDescr> rotll_bd_tree_node(Ref<BlockDescr> tree);
+    Ref<BlockDescr> rotrr_bd_tree_node(Ref<BlockDescr> tree);
     Ref<BlockDescr> balancel_bd_tree(Ref<BlockDescr> tree);
     Ref<BlockDescr> balancer_bd_tree(Ref<BlockDescr> tree);
 
