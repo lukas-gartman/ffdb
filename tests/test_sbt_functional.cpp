@@ -27,6 +27,8 @@ TEST(SBTTestFunctional, InsertAndSearch) {
     EXPECT_TRUE(SBT::get_value(tree, 5) == 3.0f);
     EXPECT_FALSE(SBT::get_value(tree, 99) != std::nullopt);
 
+    EXPECT_TRUE(SBT::valid(tree));
+
     db.commit_txn();
     remove("test.db");
 }
@@ -47,6 +49,8 @@ TEST(SBTTestFunctional, Remove) {
     EXPECT_TRUE(SBT::get_value(tree, 20) == 2.0f);
     EXPECT_TRUE(SBT::get_value(tree, 5) == 3.0f);
 
+    EXPECT_TRUE(SBT::valid(tree));
+
     db.commit_txn();
     remove("test.db");
 }
@@ -65,6 +69,8 @@ TEST(SBTTestFunctional, InOrderTraversal) {
 
     std::vector<float> expected = {1, 0, 3, 2, 4};
     EXPECT_EQ(vals, expected);
+
+    EXPECT_TRUE(SBT::valid(tree));
 
     db.commit_txn();
     remove("test.db");
@@ -110,6 +116,7 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     EXPECT_FALSE(SBT::get_value(tree1, 4) == 4.0f);
     EXPECT_FALSE(SBT::get_value(tree1, 5) == 5.0f);
     EXPECT_EQ(SBT::get_size(tree1), 3);
+    EXPECT_TRUE(SBT::valid(tree1));
 
     // tree_copy2: 1,3,4
     EXPECT_TRUE(SBT::get_value(tree2, 1) == 1.0f);
@@ -118,6 +125,7 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     EXPECT_TRUE(SBT::get_value(tree2, 4) == 4.0f);
     EXPECT_FALSE(SBT::get_value(tree2, 5) == 5.0f);
     EXPECT_EQ(SBT::get_size(tree2), 3);
+    EXPECT_TRUE(SBT::valid(tree2));
 
     // tree: 3,4,5
     EXPECT_FALSE(SBT::get_value(tree3, 1) == 1.0f);
@@ -126,7 +134,7 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     EXPECT_TRUE(SBT::get_value(tree3, 4) == 4.0f);
     EXPECT_TRUE(SBT::get_value(tree3, 5) == 5.0f);
     EXPECT_EQ(SBT::get_size(tree3), 3);
-
+    EXPECT_TRUE(SBT::valid(tree3));
 
     EXPECT_FALSE(SBT::get_value(tree4, 1) == 1.0f);
     EXPECT_FALSE(SBT::get_value(tree4, 2) == 2.0f);
@@ -134,67 +142,33 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     EXPECT_TRUE(SBT::get_value(tree4, 4) == 0.0f);
     EXPECT_TRUE(SBT::get_value(tree4, 5) == 500.0f);
     EXPECT_EQ(SBT::get_size(tree4), 3);
+    EXPECT_TRUE(SBT::valid(tree4));
 
     remove("test.db");
 }
-/*
+
 TEST(SBTTestFunctional, Update) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
+    using SBT = SBTFunctional<int, float>;
+
     db.start_txn(DB_WRITE_TXN);
-    SBT::SBT<int, float> tree;
+    auto tree = SBT::empty();
 
     // Insert initial values
-    tree.insert(10, 1.0f);
-    tree.insert(20, 2.0f);
-    tree.insert(5, 3.0f);
-
-    // Test successful updates
-    EXPECT_TRUE(tree.update(10, 10.0f));
-    EXPECT_TRUE(tree.update(20, 20.0f));
-    EXPECT_TRUE(tree.update(5, 5.0f));
+    tree = SBT::insert(tree, 10, 1.0f);
+    tree = SBT::insert(tree, 20, 2.0f);
+    tree = SBT::insert(tree, 5, 3.0f);
+    tree = SBT::replace_value(tree, 10, 10.0f);
+    tree = SBT::replace_value(tree, 20, 20.0f);
+    tree = SBT::replace_value(tree, 5, 5.0f);
 
     // Verify updated values
-    float value = 0;
-    EXPECT_TRUE(tree.search(10, value));
-    EXPECT_EQ(value, 10.0f);
-    EXPECT_TRUE(tree.search(20, value));
-    EXPECT_EQ(value, 20.0f);
-    EXPECT_TRUE(tree.search(5, value));
-    EXPECT_EQ(value, 5.0f);
-
-    // Test update on non-existent key
-    EXPECT_FALSE(tree.update(99, 99.0f));
+    EXPECT_EQ(SBT::get_value(tree, 10), 10.0f);
+    EXPECT_EQ(SBT::get_value(tree, 20), 20.0f);
+    EXPECT_EQ(SBT::get_value(tree, 5), 5.0f);
+    EXPECT_TRUE(SBT::valid(tree));
 
     db.commit_txn();
 
     remove("test.db");
 }
-
-TEST(SBTTestFunctional, SBTBalancedPrint) {
-    remove("test.db");
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
-    db.start_txn(DB_WRITE_TXN);
-    SBT::SBT<int, float> tree;
-
-    int num_keys = 100;
-    int keys[num_keys];
-    for (int i = 0; i < num_keys; ++i) {
-        keys[i] = i+1;
-    }
-
-    std::shuffle(keys, keys + num_keys, std::mt19937());
-
-    std::cout << "\nGenerated keys: ";
-    for (int key : keys) {
-        std::cout << key << " ";
-        tree.insert(key, float(key));
-    }
-
-    std::cout << "\nIn-order traversal: ";
-    tree.in_order([](const FFDBKey<int>& k, float v) { std::cout << std::get<int>(k.key_storage) << " "; });
-
-    EXPECT_TRUE(check_sbt_balance(tree));
-
-    db.commit_txn();
-    remove("test.db");
-}*/

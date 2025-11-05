@@ -105,19 +105,49 @@ private:
     static NodeRef rotate_left(NodeRef tree) {
         if (!tree || !tree->right) return tree;
 
-        auto right = tree->right;
-        auto right_left = right->left;
-        auto new_left = upd_node(tree, tree->left, right_left);
-        return upd_node(right, new_left, right->right);
+        auto l = tree->left;
+        auto r = tree->right;
+        auto rl = r->left;
+        auto rr = r->right;
+
+        return upd_node(r, upd_node(tree, l, rl), rr);
     }
 
     static NodeRef rotate_right(NodeRef tree) {
         if (!tree || !tree->left) return tree;
 
-        auto left = tree->left;
-        auto left_right = left->right;
-        auto new_right = upd_node(tree, left_right, tree->right);
-        return upd_node(left, left->left, new_right);
+        auto l = tree->left;
+        auto ll = l->left;
+        auto lr = l->right;
+        auto r = tree->right;
+
+        return upd_node(l, ll, upd_node(tree, lr, r));
+    }
+
+    static NodeRef rotate_dleft(NodeRef tree) {
+        if (!tree || !tree->right || !tree->right->left) return tree;
+
+        auto l = tree->left;
+        auto r = tree->right;
+        auto rl = r->left;
+        auto rr = r->right;
+        auto rll = rl->left;
+        auto rlr = rl->right;
+
+        return upd_node(rl, upd_node(tree, l, rll), upd_node(r, rlr, rr));
+    }
+
+    static NodeRef rotate_dright(NodeRef tree) {
+        if (!tree || !tree->left || !tree->left->right) return tree;
+
+        auto l = tree->left;
+        auto ll = l->left;
+        auto lr = l->right;
+        auto lrl = lr->left;
+        auto lrr = lr->right;
+        auto r = tree->right;
+
+        return upd_node(lr, upd_node(tree, ll, lrl), upd_node(tree, lrr, r));
     }
 
     static NodeRef balancel(NodeRef tree) {
@@ -131,9 +161,7 @@ private:
             if (get_size(left_right) < GAMMA * get_size(left_left))
                 tree = rotate_right(tree);
             else {
-                auto new_left = rotate_left(left);
-                tree = upd_node(tree, new_left, right);
-                tree = rotate_right(tree);
+                tree = rotate_dright(tree);
             }
         }
 
@@ -150,11 +178,8 @@ private:
         if (get_size(right) > DELTA * get_size(left)) {
             if (get_size(right_left) < GAMMA * get_size(right_right))
                 tree = rotate_left(tree);
-            else {
-                auto new_right = rotate_right(right);
-                tree = upd_node(tree, left, new_right);
-                tree = rotate_left(tree);
-            }
+            else
+                tree = rotate_dleft(tree);
         }
 
         return tree;
@@ -206,8 +231,8 @@ private:
         else if (!tree->right)tree = tree->left;
         else {
             if (tree->left->size > tree->right->size) {
-                auto [new_tree, new_left] = pop_last(tree->left);
-                tree = balancer(upd_node(new_tree, new_left, tree->right));
+                auto [new_left, popped_node] = pop_last(tree->left);
+                tree = balancer(upd_node(popped_node, new_left, tree->right));
             } else {
                 auto [new_right, popped_node] = pop_first(tree->right);
                 tree = balancel(upd_node(popped_node, tree->left, new_right));
@@ -242,6 +267,48 @@ private:
     static std::pair<NodeRef, NodeRef> get_children(NodeRef tree) {
         if (!tree) return std::make_pair(REF_NULL, REF_NULL);
         return std::make_pair(tree->left, tree->right);
+    }
+
+    static bool balanced(NodeRef tree) {
+        if (!tree) return true;
+
+        auto l = tree->left;
+        auto r = tree->right;
+        auto sl = get_size(l);
+        auto sr = get_size(r);
+
+        return (sl + sr <= 1 || (sl <= DELTA * sr && sr <= DELTA * sl)) && balanced(l) && balanced(r);
+    }
+
+    static bool ordered(NodeRef tree) {
+        if (!tree) return true;
+
+        auto l = tree->left;
+        auto r = tree->right;
+
+        auto ord_left = l ? l->key_value.key < tree->key_value.key : true;
+        auto ord_right = r ? tree->key_value.key < r->key_value.key : true;
+
+        return ord_left && ord_right && ordered(l) && ordered(r);
+    }
+
+    static bool valid_size(NodeRef tree) {
+        std::function<std::optional<int>(NodeRef)> real_size;
+
+        real_size = [&](NodeRef node) -> std::optional<int> {
+            if (!node) return 0;
+
+            auto ls = real_size(node->left);
+            auto rs = real_size(node->right);
+
+            if (!ls || !rs) return std::nullopt;
+
+            if (*ls + *rs + 1 == node->size) return node->size;
+
+            return std::nullopt;
+        };
+
+        return real_size(tree) == tree->size;
     }
 
 public:
@@ -327,6 +394,11 @@ public:
         };
 
         helper(tree, "");
+    }
+
+    static bool valid(NodeRef tree) {
+        if (!tree) return true;
+        return ordered(tree) && balanced(tree) && valid_size(tree);
     }
 };
 
