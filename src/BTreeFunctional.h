@@ -400,10 +400,10 @@ private:
     static std::pair<NodeRef<T, V, t>, bool> remove(NodeRef<T, V, t> node, const K &key) {
         // Find the first key greater than or equal to key
         int i = 0;
-        while (i < node->n && node->key_values[i].key < key) ++i;
+        while (i < node->n && key > node->key_values[i].key) ++i;
 
         // Key exists in the current node
-        if (i < node->n && node->key_values[i].key == key) {
+        if (i < node->n && key == node->key_values[i].key) {
             if (node->is_leaf)
                return remove_from_leaf(upd_node(node), i);
 
@@ -413,20 +413,40 @@ private:
         // Key not found in the current node and node is leaf, key does not exist.
         if (node->is_leaf) { return std::make_pair(node, false); } // Key not found
 
-        // Key not found in the current node, search in child.
-        auto [child, modified] = remove(node->children[i], key);
+        // Before descending, ensure the child we descend into has at least t keys
+        NodeRef<T, V, t> parent = node;
+        int child_index = i;
 
-        // Key not found in child
+        // Rebalance if the child has only t-1 keys
+        if (parent->children[child_index]->n == t - 1) {
+            parent = upd_node(parent);
+
+            NodeRef<T, V, t> left_sibling = child_index > 0 ? parent->children[child_index - 1] : REF_NULL;
+            NodeRef<T, V, t> right_sibling = child_index < parent->n ? parent->children[child_index + 1] : REF_NULL;
+
+            // Move a key from an immediate sibling if it has enough keys
+            if (left_sibling && left_sibling->n >= t) {
+                // Left sibling has enough keys, move a key from it
+                parent = move_key_and_child_from_left_sibling(parent, child_index);
+            } else if (right_sibling && right_sibling->n >= t) {
+                parent = move_key_and_child_from_right_sibling(parent, child_index);
+            } else {
+                // Neither sibling has enough keys, merge with the right sibling unless we're at the last child
+                if (child_index < parent->n) {
+                    parent = merge(parent, child_index);
+                } else {
+                    parent = merge(parent, child_index - 1);
+                    child_index -= 1; // After merging with left sibling, our target child moved left.
+                }
+            }
+        }
+
+        // Descend into the child now guaranteed to contain at least t keys.
+        auto [child, modified] = remove(parent->children[child_index], key);
         if (!modified) return std::make_pair(node, false);
 
-        // Key was removed so we need to cow
-        node = upd_node(node);
-        node->children[i] = child;
-
-        // Rebalance nodes along the traversal if necessary, ensuring they have >= t keys
-        if (child->n < t) node = rebalance_node(node, i);
-
-        return std::make_pair(node, modified);
+        parent->children[child_index] = child;
+        return std::make_pair(parent, true);
     }
 
     // parent assumed to be copied
@@ -501,7 +521,7 @@ private:
     }
 
     template <ValidKeyArg<T> K>
-    static std::pair<NodeRef<T, V, t>, bool> update_value(NodeRef<T, V, t> x, const K &key, std::function<V(V)> f) {
+    static std::pair<NodeRef<T, V, t>, bool> update_value_in_node(NodeRef<T, V, t> x, const K &key, std::function<V(V)> f) {
         // If REF_NULL is given as argument, return REF_NULL.
         if (x == REF_NULL) return std::make_pair(x, false);
 
@@ -517,7 +537,7 @@ private:
 
         if (x->is_leaf) return std::make_pair(x, false);
 
-        auto [new_child, updated] = update_value(x->children[i], key, f);
+        auto [new_child, updated] = update_value_in_node(x->children[i], key, f);
         if (updated) {
             x = upd_node(x);
             x->children[i] = new_child;
@@ -638,7 +658,7 @@ public:
     static BTreeRef<T, V, t> update_value(BTreeRef<T, V, t> btree, const K &key, std::function<V(V)> f) {
         if (!btree) return btree;
 
-        auto [new_root, updated] = update_value(btree->root, key, f);
+        auto [new_root, updated] = update_value_in_node(btree->root, key, f);
         if (!updated) return btree;
 
         auto old_btree = btree;
