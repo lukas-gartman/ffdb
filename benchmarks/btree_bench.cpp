@@ -404,9 +404,8 @@ static void Mixed(benchmark::State &state) {
     run_mixed_iteration<DEGREE>(state, N, words_all, dbfile);
 }
 
-BENCHMARK_TEMPLATE(WordCount, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(RandomLookup, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Insert, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Remove, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Mixed, 5)->Arg(1'000'000)->Arg(5'000'000)->Arg(20'000'000)->Iterations(1)->Repetitions(10)->Unit(benchmark::kMillisecond);
-
+BENCHMARK_TEMPLATE(WordCount,    5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(RandomLookup, 5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Insert,       5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Remove,       5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Mixed,        5)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
