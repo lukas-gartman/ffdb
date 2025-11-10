@@ -17,7 +17,7 @@ static std::vector<std::string> load_words() {
     catch (...) { return read_words_file("benchmarks/words.txt"); }
 }
 
-static Size initial_size_for(size_t n) {
+static Size initial_size_for(Size n) {
     if (n <= 1'000'000)  return 512ull * 1024 * 1024;
     if (n <= 5'000'000)  return   2ull * 1024 * 1024 * 1024;
     if (n <= 20'000'000) return   8ull * 1024 * 1024 * 1024;
@@ -25,25 +25,25 @@ static Size initial_size_for(size_t n) {
     return 48ull * 1024 * 1024 * 1024;
 }
 
-static void build_dataset(std::vector<std::string> &out, const std::vector<std::string> &base, size_t n) {
+static void build_dataset(std::vector<std::string> &out, const std::vector<std::string> &base, Size n) {
     out.clear();
     out.reserve(n);
-    size_t m = base.size();
-    for (size_t i = 0; i < n; ++i) out.push_back(base[i % m]);
+    Size m = base.size();
+    for (Size i = 0; i < n; ++i) out.push_back(base[i % m]);
 }
 
-static void build_unique_dataset(std::vector<std::string> &out, const std::vector<std::string> &base, size_t n, const std::string &prefix, size_t start = 0) {
+static void build_unique_dataset(std::vector<std::string> &out, const std::vector<std::string> &base, Size n, const std::string &prefix, Size start = 0) {
     out.clear();
     out.reserve(n);
-    size_t m = base.size();
-    for (size_t i = 0; i < n; ++i) out.push_back(prefix + base[i % m] + ":" + std::to_string(start + i));
+    Size m = base.size();
+    for (Size i = 0; i < n; ++i) out.push_back(prefix + base[i % m] + ":" + std::to_string(start + i));
 }
 
 static void compute_quantiles(const std::vector<double> &l, double &p50, double &p95, double &p99) {
     if (l.empty()) { p50 = p95 = p99 = 0; return; }
     std::vector<double> c = l;
     auto pick = [&](int pct) {
-        size_t i = c.size() * pct / 100;
+        Size i = c.size() * pct / 100;
         std::nth_element(c.begin(), c.begin() + i, c.end());
         return c[i];
     };
@@ -53,25 +53,41 @@ static void compute_quantiles(const std::vector<double> &l, double &p50, double 
 }
 
 template <int DEGREE>
-static void run_wordcount_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words, const std::string &dbfile) {
+static void create_empty_db(const std::string &dbfile, Size N) {
+    FFDB db(dbfile, O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
+    db.start_txn(DB_WRITE_TXN);
+    auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+    db.commit_txn(tree.as_offset());
+}
+
+static FFDB open_db(const std::string &dbfile) {
+    FFDB db(dbfile, O_RDWR, 0, 0);
+    return db;
+}
+
+template <int DEGREE>
+static void run_wordcount_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words, const std::string &dbfile) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
     for (auto _ : state) {
         ::unlink(dbfile.c_str());
 
-        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-        db.start_txn(DB_WRITE_TXN);
-
-        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        create_empty_db<DEGREE>(dbfile, N);
 
         std::vector<double> latencies;
         latencies.reserve(N);
         auto total_start = std::chrono::steady_clock::now();
 
-        for (size_t i = 0; i < N; ++i) {
+        auto db = open_db(dbfile);
+        BTRef tree = db.start_txn(DB_WRITE_TXN);
+
+        for (Size i = 0; i < N; ++i) {
             auto op_start = std::chrono::steady_clock::now();
-            auto t2 = BTreeFunctional<char, uint64_t, DEGREE>::update_value(
+            auto t2 = BT::update_value(
                 tree, words[i], [](uint64_t v){ return v + 1; });
             tree = t2 == tree
-                ? BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, words[i], 1)
+                ? BT::insert(tree, words[i], 1)
                 : t2;
             auto op_end = std::chrono::steady_clock::now();
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
@@ -80,8 +96,7 @@ static void run_wordcount_iteration(benchmark::State &state, size_t N, const std
 
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
-        db.set_new_txn_root(tree.as_offset());
-        db.commit_txn();
+        db.commit_txn(tree.as_offset());
 
         double p50, p95, p99;
         compute_quantiles(latencies, p50, p95, p99);
@@ -94,7 +109,7 @@ static void run_wordcount_iteration(benchmark::State &state, size_t N, const std
 
 template <int DEGREE>
 static void WordCount(benchmark::State &state) {
-    auto N = (size_t) state.range(0);
+    auto N = (Size) state.range(0);
     std::string dbfile = "wordcount_" + std::to_string(N) + ".db";
 
     auto words_all = load_words();
@@ -104,13 +119,13 @@ static void WordCount(benchmark::State &state) {
     run_wordcount_iteration<DEGREE>(state, N, words, dbfile);
 }
 
-static void build_random_queries(const std::vector<std::string> &words, size_t N, std::vector<std::string> &queries, int miss_pct = 10, uint64_t seed = 133769420ULL) {
+static void build_random_queries(const std::vector<std::string> &words, Size N, std::vector<std::string> &queries, int miss_pct = 10, uint64_t seed = 133769420ULL) {
     std::mt19937_64 rng(seed);
-    std::uniform_int_distribution<size_t> pick(0, words.size() - 1);
+    std::uniform_int_distribution<Size> pick(0, words.size() - 1);
     queries.clear();
     queries.reserve(N);
-    size_t miss_every = miss_pct > 0 ? 100 / miss_pct : 0;
-    for (size_t i = 0; i < N; ++i) {
+    Size miss_every = miss_pct > 0 ? 100 / miss_pct : 0;
+    for (Size i = 0; i < N; ++i) {
         if (miss_pct > 0 && miss_every && (i % miss_every == 0)) {
             queries.push_back("_guaranteed_unique_key" + std::to_string(i));
         } else {
@@ -120,35 +135,39 @@ static void build_random_queries(const std::vector<std::string> &words, size_t N
 }
 
 template <int DEGREE>
-static void run_random_lookup_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words, const std::vector<std::string> &queries, const std::string &dbfile) {
+static void run_random_lookup_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words, const std::vector<std::string> &queries, const std::string &dbfile) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
     for (auto _ : state) {
         ::unlink(dbfile.c_str());
         {
-            FFDB db_build(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-            db_build.start_txn(DB_WRITE_TXN);
-            auto tree_build = BTreeFunctional<char, uint64_t, DEGREE>::empty();
-            for (size_t i = 0; i < N; ++i) {
-                auto t2 = BTreeFunctional<char, uint64_t, DEGREE>::update_value(tree_build, words[i], [](uint64_t v){ return v + 1; });
+            create_empty_db<DEGREE>(dbfile, N);
+
+            FFDB db_build = open_db(dbfile);
+            BTRef tree_build = db_build.start_txn(DB_WRITE_TXN);
+
+            for (Size i = 0; i < N; ++i) {
+                auto t2 = BT::update_value(tree_build, words[i], [](uint64_t v){ return v + 1; });
                 tree_build = t2 == tree_build
-                    ? BTreeFunctional<char, uint64_t, DEGREE>::insert(tree_build, words[i], 1)
+                    ? BT::insert(tree_build, words[i], 1)
                     : t2;
             }
-            db_build.set_new_txn_root(tree_build.as_offset());
-            db_build.commit_txn();
+
+            db_build.commit_txn(tree_build.as_offset());
         }
 
-        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-        db.start_txn(DB_READ_TXN);
-        auto tree = db.template get_txn_root<BTreeHeader<char, uint64_t, DEGREE>>();
+        FFDB db = open_db(dbfile);
+        BTRef tree = db.start_txn(DB_READ_TXN);
 
         std::vector<double> latencies;
         latencies.reserve(queries.size());
-        size_t hits = 0;
+        Size hits = 0;
 
         auto total_start = std::chrono::steady_clock::now();
         for (const auto &q : queries) {
             auto op_start = std::chrono::steady_clock::now();
-            auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, q);
+            auto val = BT::get_value(tree, q);
             auto op_end = std::chrono::steady_clock::now();
             if (val.has_value()) hits++;
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
@@ -171,7 +190,7 @@ static void run_random_lookup_iteration(benchmark::State &state, size_t N, const
 
 template <int DEGREE>
 static void RandomLookup(benchmark::State &state) {
-    auto N = (size_t) state.range(0);
+    auto N = (Size) state.range(0);
     std::string dbfile = "random_lookup_" + std::to_string(N) + ".db";
 
     auto words_all = load_words();
@@ -185,14 +204,17 @@ static void RandomLookup(benchmark::State &state) {
 }
 
 template <int DEGREE>
-static void run_insert_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+static void run_insert_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
     for (auto _ : state) {
         ::unlink(dbfile.c_str());
 
-        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-        db.start_txn(DB_WRITE_TXN);
+        create_empty_db<DEGREE>(dbfile, N);
+        FFDB db = open_db(dbfile);
 
-        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        BTRef tree = db.start_txn(DB_WRITE_TXN);
 
         std::vector<std::string> ins_keys;
         build_unique_dataset(ins_keys, words_all, N, "ins:");
@@ -200,9 +222,9 @@ static void run_insert_iteration(benchmark::State &state, size_t N, const std::v
         std::vector<double> latencies;
         latencies.reserve(N);
         auto total_start = std::chrono::steady_clock::now();
-        for (size_t i = 0; i < N; ++i) {
+        for (Size i = 0; i < N; ++i) {
             auto op_start = std::chrono::steady_clock::now();
-            tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, ins_keys[i], 1);
+            tree = BT::insert(tree, ins_keys[i], 1);
             auto op_end = std::chrono::steady_clock::now();
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
             latencies.push_back(ns);
@@ -210,8 +232,7 @@ static void run_insert_iteration(benchmark::State &state, size_t N, const std::v
 
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
-        db.set_new_txn_root(tree.as_offset());
-        db.commit_txn();
+        db.commit_txn(tree.as_offset());
 
         double p50, p95, p99;
         compute_quantiles(latencies, p50, p95, p99);
@@ -224,25 +245,29 @@ static void run_insert_iteration(benchmark::State &state, size_t N, const std::v
 
 template <int DEGREE>
 static void Insert(benchmark::State &state) {
-    auto N = (size_t) state.range(0);
+    auto N = (Size) state.range(0);
     std::string dbfile = "insert_" + std::to_string(N) + ".db";
     auto words_all = load_words();
     run_insert_iteration<DEGREE>(state, N, words_all, dbfile);
 }
 
 template <int DEGREE>
-static void run_remove_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+static void run_remove_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
     for (auto _ : state) {
         ::unlink(dbfile.c_str());
 
-        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-        db.start_txn(DB_WRITE_TXN);
+        create_empty_db<DEGREE>(dbfile, N);
+        FFDB db = open_db(dbfile);
 
-        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        BTRef tree = db.start_txn(DB_WRITE_TXN);
+
         std::vector<std::string> keys;
         build_unique_dataset(keys, words_all, N, "rem:");
-        for (size_t i = 0; i < N; ++i) {
-            tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, keys[i], 1);
+        for (Size i = 0; i < N; ++i) {
+            tree = BT::insert(tree, keys[i], 1);
         }
 
         std::vector<std::string> rem_keys;
@@ -250,12 +275,12 @@ static void run_remove_iteration(benchmark::State &state, size_t N, const std::v
 
         std::vector<double> latencies;
         latencies.reserve(N);
-        size_t removed_cnt = 0;
+        Size removed_cnt = 0;
 
         auto total_start = std::chrono::steady_clock::now();
-        for (size_t i = 0; i < N; ++i) {
+        for (Size i = 0; i < N; ++i) {
             auto op_start = std::chrono::steady_clock::now();
-            auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, rem_keys[i]);
+            auto [t2, removed] = BT::remove(tree, rem_keys[i]);
             if (removed) {
                 tree = t2;
                 removed_cnt++;
@@ -268,8 +293,8 @@ static void run_remove_iteration(benchmark::State &state, size_t N, const std::v
 
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
-        db.set_new_txn_root(tree.as_offset());
-        db.commit_txn();
+
+        db.commit_txn(tree.as_offset());
 
         double p50, p95, p99;
         compute_quantiles(latencies, p50, p95, p99);
@@ -283,7 +308,7 @@ static void run_remove_iteration(benchmark::State &state, size_t N, const std::v
 
 template <int DEGREE>
 static void Remove(benchmark::State &state) {
-    auto N = (size_t) state.range(0);
+    auto N = (Size) state.range(0);
     std::string dbfile = "remove_" + std::to_string(N) + ".db";
     auto words_all = load_words();
     run_remove_iteration<DEGREE>(state, N, words_all, dbfile);
@@ -291,10 +316,10 @@ static void Remove(benchmark::State &state) {
 
 enum class Op { LOOKUP, INSERT, REMOVE };
 
-static void build_mixed_ops(std::vector<Op> &ops, size_t total, uint64_t seed = 420691337ULL) {
-    size_t inserts = (total * 20) / 100;
-    size_t removes = (total * 10) / 100;
-    size_t lookups = total - inserts - removes;
+static void build_mixed_ops(std::vector<Op> &ops, Size total, uint64_t seed = 420691337ULL) {
+    Size inserts = (total * 20) / 100;
+    Size removes = (total * 10) / 100;
+    Size lookups = total - inserts - removes;
     ops.clear();
     ops.reserve(total);
     ops.insert(ops.end(), lookups, Op::LOOKUP);
@@ -305,24 +330,28 @@ static void build_mixed_ops(std::vector<Op> &ops, size_t total, uint64_t seed = 
 }
 
 template <int DEGREE>
-static void run_mixed_iteration(benchmark::State &state, size_t N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+static void run_mixed_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words_all, const std::string &dbfile) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
     for (auto _ : state) {
         ::unlink(dbfile.c_str());
 
-        FFDB db(dbfile, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, initial_size_for(N));
-        db.start_txn(DB_WRITE_TXN);
+        create_empty_db<DEGREE>(dbfile, N);
+        FFDB db = open_db(dbfile);
 
-        auto tree = BTreeFunctional<char, uint64_t, DEGREE>::empty();
+        BTRef tree = db.start_txn(DB_WRITE_TXN);
+
         std::vector<std::string> base_keys;
         build_unique_dataset(base_keys, words_all, N, "mix:");
-        for (size_t i = 0; i < base_keys.size(); ++i) {
-            tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, base_keys[i], 1);
+        for (Size i = 0; i < base_keys.size(); ++i) {
+            tree = BT::insert(tree, base_keys[i], 1);
         }
 
         // Determine operation mix counts
-        size_t inserts = (N * 20) / 100;
-        size_t removes = (N * 10) / 100;
-        size_t lookups = N - inserts - removes;
+        Size inserts = (N * 20) / 100;
+        Size removes = (N * 10) / 100;
+        Size lookups = N - inserts - removes;
 
         // Prepare keys/queries for operations
         std::vector<std::string> ins_keys;
@@ -330,7 +359,7 @@ static void run_mixed_iteration(benchmark::State &state, size_t N, const std::ve
 
         std::vector<std::string> rem_keys;
         rem_keys.reserve(removes);
-        for (size_t i = 0; i < removes; ++i) rem_keys.push_back(base_keys[i]);
+        for (Size i = 0; i < removes; ++i) rem_keys.push_back(base_keys[i]);
 
         std::vector<std::string> queries;
         build_random_queries(base_keys, lookups, queries, 10);
@@ -341,34 +370,34 @@ static void run_mixed_iteration(benchmark::State &state, size_t N, const std::ve
         std::vector<double> latencies;
         latencies.reserve(N);
 
-        size_t look_i = 0, ins_i = 0, rem_i = 0;
-        size_t lookup_hits = 0, lookup_cnt = 0, removed_cnt = 0;
+        Size look_i = 0, ins_i = 0, rem_i = 0;
+        Size lookup_hits = 0, lookup_cnt = 0, removed_cnt = 0;
 
         auto total_start = std::chrono::steady_clock::now();
         for (Op op : ops) {
             auto op_start = std::chrono::steady_clock::now();
             if (op == Op::LOOKUP) {
                 if (look_i < queries.size()) {
-                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, queries[look_i++]);
+                    auto val = BT::get_value(tree, queries[look_i++]);
                     if (val.has_value()) lookup_hits++;
                     lookup_cnt++;
                 } else {
-                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    auto val = BT::get_value(tree, base_keys[0]);
                     (void)val;
                 }
             } else if (op == Op::INSERT) {
                 if (ins_i < ins_keys.size()) {
-                    tree = BTreeFunctional<char, uint64_t, DEGREE>::insert(tree, ins_keys[ins_i++], 1);
+                    tree = BT::insert(tree, ins_keys[ins_i++], 1);
                 } else {
-                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    auto val = BT::get_value(tree, base_keys[0]);
                     (void)val;
                 }
             } else { // Op::REMOVE
                 if (rem_i < rem_keys.size()) {
-                    auto [t2, removed] = BTreeFunctional<char, uint64_t, DEGREE>::remove(tree, rem_keys[rem_i++]);
+                    auto [t2, removed] = BT::remove(tree, rem_keys[rem_i++]);
                     if (removed) { tree = t2; removed_cnt++; }
                 } else {
-                    auto val = BTreeFunctional<char, uint64_t, DEGREE>::get_value(tree, base_keys[0]);
+                    auto val = BT::get_value(tree, base_keys[0]);
                     (void)val;
                 }
             }
@@ -381,8 +410,7 @@ static void run_mixed_iteration(benchmark::State &state, size_t N, const std::ve
         auto total_end = std::chrono::steady_clock::now();
         double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
 
-        db.set_new_txn_root(tree.as_offset());
-        db.commit_txn();
+        db.commit_txn(tree.as_offset());
 
         double p50, p95, p99;
         compute_quantiles(latencies, p50, p95, p99);
@@ -397,7 +425,7 @@ static void run_mixed_iteration(benchmark::State &state, size_t N, const std::ve
 
 template <int DEGREE>
 static void Mixed(benchmark::State &state) {
-    auto N = (size_t) state.range(0);
+    auto N = (Size) state.range(0);
     std::string dbfile = "mixed_" + std::to_string(N) + ".db";
 
     auto words_all = load_words();
