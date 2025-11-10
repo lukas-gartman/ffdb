@@ -216,12 +216,12 @@ public:
 
     template<class A> Ref<A> malloc(Size elem_amount = 1, Size padding = 0) {
         if (elem_amount == 0) return 0;
-        return malloc_internal(sizeof(A) * elem_amount);
+        return malloc_internal(sizeof(A) * elem_amount + padding);
     }
 
     template<class A> void free(Ref<A> ref, Size elem_amount = 1, Size padding = 0) {
         if (elem_amount == 0) return;
-        free_internal(ref.as_offset(), sizeof(A) * elem_amount);
+        free_internal(ref.as_offset(), sizeof(A) * elem_amount + padding);
     }
 
     Revision *register_revision(Offset root, Id txn_id);
