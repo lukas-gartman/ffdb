@@ -1,5 +1,5 @@
-#ifndef FFDB2_H
-#define FFDB2_H
+#ifndef FFDB_H
+#define FFDB_H
 
 #include <cassert>
 #include <optional>
@@ -169,6 +169,7 @@ private:
     unsigned char *base;
     SharedState *shared_state;
     string filepath;
+    Revision* registered_rev;
 
     DBMode db_mode;
     WriterState writer_state;
@@ -213,12 +214,12 @@ public:
 
     DBConf conf;
 
-    template<class A> Ref<A> malloc(Size elem_amount = 1) {
+    template<class A> Ref<A> malloc(Size elem_amount = 1, Size padding = 0) {
         if (elem_amount == 0) return 0;
         return malloc_internal(sizeof(A) * elem_amount);
     }
 
-    template<class A> void free(Ref<A> ref, Size elem_amount = 1) {
+    template<class A> void free(Ref<A> ref, Size elem_amount = 1, Size padding = 0) {
         if (elem_amount == 0) return;
         free_internal(ref.as_offset(), sizeof(A) * elem_amount);
     }
@@ -226,29 +227,9 @@ public:
     Revision *register_revision(Offset root, Id txn_id);
     void unregister_revision(Revision *rev);
 
-    void start_txn(DBMode mode);
+    Offset start_txn(DBMode mode);
     void rollback_txn();
-    void commit_txn();
-
-    void set_new_txn_root(Offset root);
-
-    template<class A>
-    Ref<A> update_txn_root() {
-        if (shared_state->active_txn_root == 0) throw std::runtime_error("No active txn root exists. ");
-
-        Ref<A> root_ref = shared_state->active_txn_root;
-        Ref<A> root_cpy = copy<A>(root_ref.as_offset());
-        set_new_txn_root(root_cpy);
-
-        free(root_ref);
-
-        return root_cpy;
-    }
-
-    template<class A>
-    Ref<A> get_txn_root() {
-        return shared_state->active_txn_root;
-    }
+    void commit_txn(Offset txn_root = 0);
 
     Id get_txn_id() const {
         return shared_state->curr_txn_id;
@@ -269,4 +250,4 @@ public:
     }
 };
 
-#endif //FFDB2_H
+#endif //FFDB_H

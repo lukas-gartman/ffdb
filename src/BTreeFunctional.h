@@ -597,6 +597,7 @@ public:
 
         if (!removed) { return std::make_pair(btree, false); }
 
+        // TODO: As long as it is within the same txn we should only need to modify btree, not copy it like this.
         auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
         new_btree->root = new_root;
         new_btree->size = btree->size - 1;

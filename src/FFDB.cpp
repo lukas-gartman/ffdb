@@ -437,7 +437,7 @@ void FFDB::unlock() {
     else throw std::invalid_argument("Invalid DBMode");
 }
 
-// TODO: Throws no exceptions but close and munmap may fail. Correct use of noexcept?
+// TODO: Remove noexcep
 void FFDB::cleanup() noexcept {
     if (fd >= 0) {
         close(fd);
@@ -495,7 +495,8 @@ pid(getpid()),
 fd(-1),
 mmap_size(0),
 base(nullptr),
-filepath(std::move(filepath)) {
+filepath(std::move(filepath)),
+registered_rev(nullptr) {
     if (this->filepath.empty()) throw std::invalid_argument("filepath is empty");
 
     bool is_new = false;
@@ -550,7 +551,7 @@ filepath(std::move(filepath)) {
         shared_state->conf = this->conf;
 
         shared_state->curr_txn_id = 1;
-        shared_state->min_txn_id = 1; // TODO: Noone uses a revision yet. Should this be +inf?
+        shared_state->min_txn_id = 1;
 
         shared_state->write_lock.init();
         shared_state->rev_lock.init();
@@ -560,6 +561,8 @@ filepath(std::move(filepath)) {
 
         // The rest is zeroed by ftruncate
     }
+
+    db_mode = DB_NO_TXN;
 }
 
 Revision *FFDB::register_revision(Offset root, Id txn_id) {
@@ -592,7 +595,6 @@ Revision *FFDB::register_revision(Offset root, Id txn_id) {
 
     if (!found) {
         if (found_rev == nullptr) {
-            // TODO: Am I sure about sys instead of log?
             size_t max_revisions = (conf.get_sys_page_size() - sizeof(SharedState)) / sizeof(Revision);
             if (shared_state->revision_count >= max_revisions) {
                 shared_state->rev_lock.unlock();
@@ -637,11 +639,16 @@ void FFDB::unregister_revision(Revision *rev) {
     shared_state->rev_lock.unlock();
 }
 
-// TODO: Use these three functions to connect all code.
+Offset FFDB::start_txn(DBMode mode) {
+    if (db_mode != DB_NO_TXN) throw std::runtime_error("Transaction already started.");
 
-void FFDB::start_txn(DBMode mode) {
     db_mode = mode;
     lock();
+
+    // TODO: Race condition if a commit happens between the below. Introduce a lock. Commit lock. For reads as only
+    // TODO: one thread can write at a time
+    auto txn_root = shared_state->active_txn_root;
+    auto curr_txn_id = shared_state->curr_txn_id;
 
     current_base = base;
     _current_db = this;
@@ -661,20 +668,20 @@ void FFDB::start_txn(DBMode mode) {
         writer_state.lf_block.txn_id = 0;
     }
     else if (db_mode == DB_READ_TXN) {
-        // Reg revision?
+        registered_rev = register_revision(txn_root, curr_txn_id);
     }
+
+    return txn_root;
 }
 
 void FFDB::rollback_txn() {
-    if (mprotect(base, mmap_size, PROT_READ) == -1)
-        throw std::runtime_error("Errno: " + std::to_string(errno));
-
+    if (db_mode == DB_WRITE_TXN) {
+        if (mprotect(base, mmap_size, PROT_READ) == -1)
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+    }
     if (db_mode == DB_READ_TXN) {
-        // unreg revision?
-
-        unlock();
-        db_mode = DB_NO_TXN;
-        return;
+        unregister_revision(registered_rev);
+        registered_rev = nullptr;
     }
 
     // shared_state->writer_pid = 0;
@@ -685,56 +692,54 @@ void FFDB::rollback_txn() {
     db_mode = DB_NO_TXN;
 }
 
-void FFDB::commit_txn()  {
+void FFDB::commit_txn(Offset txn_root)  {
     if (db_mode == DB_NO_TXN)
         throw std::runtime_error("No transaction started!");
 
-    if (db_mode == DB_READ_TXN) {
-        // unreg revision?
+    if (db_mode == DB_WRITE_TXN) {
+        //if (txn_root == 0) throw std::runtime_error("Write txn: Must specify txn_root!");
 
-        unlock();
-        db_mode = DB_NO_TXN;
-        return;
+        auto saved_root = shared_state->active_txn_root;
+        auto saved_top = shared_state->top;
+        auto saved_free_list = shared_state->free_blocks;
+        auto saved_free_descriptors = shared_state->free_descrs;
+
+        if (writer_state.pending_unused_last != 0) {
+            writer_state.pending_unused_last->next_unused = writer_state.unused_descrs;
+            writer_state.unused_descrs = writer_state.pending_unused_descrs;
+        }
+
+        if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0)
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+
+        shared_state->active_txn_root = txn_root;
+        shared_state->top = writer_state.top;
+        shared_state->free_blocks = writer_state.free_blocks;
+        shared_state->free_descrs = writer_state.unused_descrs;
+        shared_state->curr_txn_id++;
+
+        if (mprotect(base, mmap_size, PROT_READ) == -1)
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+
+        if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0) {
+            shared_state->active_txn_root = saved_root;
+            shared_state->top = saved_top;
+            shared_state->free_blocks = saved_free_list;
+            shared_state->free_descrs = saved_free_descriptors;
+            shared_state->curr_txn_id--;
+            throw std::runtime_error("Errno: " + std::to_string(errno));
+        }
+
+        _current_db = nullptr;
     }
-
-    auto saved_root = shared_state->active_txn_root;
-    auto saved_top = shared_state->top;
-    auto saved_free_list = shared_state->free_blocks;
-    auto saved_free_descriptors = shared_state->free_descrs;
-
-    if (writer_state.pending_unused_last != 0) {
-        writer_state.pending_unused_last->next_unused = writer_state.unused_descrs;
-        writer_state.unused_descrs = writer_state.pending_unused_descrs;
-    }
-
-    if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0)
-        throw std::runtime_error("Errno: " + std::to_string(errno));
-
-    shared_state->active_txn_root = writer_state.txn_root;
-    shared_state->top = writer_state.top;
-    shared_state->free_blocks = writer_state.free_blocks;
-    shared_state->free_descrs = writer_state.unused_descrs;
-    shared_state->curr_txn_id++;
-
-    if (mprotect(base, mmap_size, PROT_READ) == -1)
-        throw std::runtime_error("Errno: " + std::to_string(errno));
-
-    if (msync(base, mmap_size, MS_SYNC | MS_INVALIDATE) != 0) {
-        shared_state->active_txn_root = saved_root;
-        shared_state->top = saved_top;
-        shared_state->free_blocks = saved_free_list;
-        shared_state->free_descrs = saved_free_descriptors;
-        shared_state->curr_txn_id--;
-        throw std::runtime_error("Errno: " + std::to_string(errno));
+    else if (db_mode == DB_READ_TXN) {
+        unregister_revision(registered_rev);
+        registered_rev = nullptr;
     }
 
     // state->writer_pid = 0;
-    _current_db = nullptr;
+
 
     unlock();
     db_mode = DB_NO_TXN;
-}
-
-void FFDB::set_new_txn_root(Offset root) {
-    writer_state.txn_root = root;
 }

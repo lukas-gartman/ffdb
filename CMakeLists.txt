@@ -8,10 +8,9 @@ set(FFDB_SOURCES
     src/FFDB.h
     src/Typedefs.cpp
     src/Typedefs.h
-    src/BTree.h
     src/BTreeFunctional.h
+    src/SBTFunctional.h
     src/Synch.h
-    src/SBT.h
     src/FFDBKey.h
     src/Memutils.h
 )
@@ -26,9 +25,8 @@ else()
     add_executable(ffdb_tests
         tests/test_main.cpp
         tests/test_allocator.cpp
-        tests/test_btree.cpp
+        tests/test_ffdb.cpp
         tests/test_btree_functional.cpp
-        tests/test_sbt.cpp
         tests/test_sbt_functional.cpp
         tests/test_ffdb_key.cpp
         ${FFDB_SOURCES}
