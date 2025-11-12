@@ -12,10 +12,7 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
-    if (conf.is_page_boundry_aware())
-        bytes = align_bytes(bytes, bytes >= conf.get_align_threshold() ? conf.get_large_align() : conf.get_small_align());
-    else
-        bytes = align_bytes(bytes, conf.get_small_align());
+    bytes = align_bytes(bytes, conf.get_small_align());
 
     Offset offset;
 
@@ -36,7 +33,6 @@ Offset FFDB::malloc_internal(Size bytes) {
         return offset;
     }
 
-    // TODO: Any case where there is a free block that is large enough for a node but not correctly aligned?
     // Try finding a fitting block in the block descriptor list.
     auto [new_tree, found_block] = del_bd_tree(writer_state.free_blocks, bytes);
     writer_state.free_blocks = new_tree;
@@ -58,12 +54,11 @@ Offset FFDB::malloc_internal(Size bytes) {
         // We have that bytes == 4096 * amount_of_pages - bytes_left, where bytes_left is the amount of bytes not occupied by
         // bytes in the last page and amount_of_pages > 1. Hence bytes + bytes_left == amount_of_pages.
 
-        // TODO: What txn_id is appropriate here?
-        Block lo_block = {bytes_left > 0 ? writer_state.top : 0, bytes_left, 0};
+        Block lo_block = {bytes_left > 0 ? writer_state.top : 0, bytes_left, shared_state->curr_txn_id};
 
-        // Block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
+        // If block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
         Size bd_size = sizeof(BlockDescr);
-        if (bytes_left > bd_size + conf.get_small_align()) {
+        if (bytes_left >= bd_size + conf.get_small_align()) {
             lo_block.ofs += bd_size;
             lo_block.size -= bd_size;
 
