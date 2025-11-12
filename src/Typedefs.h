@@ -1,13 +1,15 @@
 #ifndef TYPEDEFS_H
 #define TYPEDEFS_H
 #include <cstdint>
-#include <cstddef>
-#include <unistd.h>
 #include <stdexcept>
 
 class FFDB;
 
-#define PAGE_BOUNDRY_AWARE
+#define FFDB_PHY_PAGE_SIZE 4096
+#define FFDB_LOG_PAGE_SIZE FFDB_PHY_PAGE_SIZE
+#define FFDB_ALIGN 16
+#define FFDB_PAGE_BOUNDRY_AWARE true
+#define FFDB_KEY_PREFIX_SIZE 8
 
 extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
 extern __thread FFDB *_current_db __attribute__((tls_model("initial-exec")));

@@ -66,9 +66,7 @@ struct DBConf {
 private:
     Size sys_page_size;
     Size log_page_size;
-    Size small_align;
-    Size large_align;
-    Size align_threshold;
+    Size align;
     Size bdtree_delta;
     Size bdtree_gamma;
     bool page_boundry_aware;
@@ -76,21 +74,19 @@ private:
 public:
     DBConf(
         Size sys_page_size, Size log_page_size,
-        Size small_align, Size large_align, Size align_threshold,
+        Size small_align,
         Size bdtree_delta, Size bdtree_gamma, bool page_boundry_aware
     ):
     sys_page_size(sys_page_size), log_page_size(log_page_size),
-    small_align(small_align), large_align(large_align), align_threshold(align_threshold),
+    align(small_align),
     bdtree_delta(bdtree_delta), bdtree_gamma(bdtree_gamma),
     page_boundry_aware(page_boundry_aware) {}
 
-    DBConf() : DBConf(4096, 4096, 16, 4096, 4096, 3, 2, true) {};
+    DBConf() : DBConf(FFDB_PHY_PAGE_SIZE, FFDB_LOG_PAGE_SIZE, FFDB_ALIGN, 3, 2, FFDB_PAGE_BOUNDRY_AWARE) {};
 
     Size get_sys_page_size() const { return sys_page_size; }
     Size get_log_page_size() const { return log_page_size; }
-    Size get_small_align() const { return small_align; }
-    Size get_large_align() const { return large_align; }
-    Size get_align_threshold() const { return align_threshold; }
+    Size get_align() const { return align; }
     Size get_bdtree_delta() const { return bdtree_delta; }
     Size get_bdtree_gamma() const { return bdtree_gamma; }
     bool is_page_boundry_aware() const { return page_boundry_aware; }

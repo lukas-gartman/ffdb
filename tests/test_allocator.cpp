@@ -15,8 +15,8 @@ TEST(AllocatorTest, TestAllocFreeTop) {
     db.start_txn(DB_WRITE_TXN);
 
     // Calculate how many uint64_t values can fit into a single page and compensate for alignment.
-    const size_t elem_size = sizeof(uint64_t) <= db.conf.get_small_align() ? db.conf.get_small_align() : sizeof(uint64_t);
-    const size_t data_size = (db.conf.get_sys_page_size() / elem_size - 1) - db.conf.get_small_align();
+    const size_t elem_size = sizeof(uint64_t) <= db.conf.get_align() ? db.conf.get_align() : sizeof(uint64_t);
+    const size_t data_size = (db.conf.get_sys_page_size() / elem_size - 1) - db.conf.get_align();
     Ref<uint64_t> values1[data_size];
 
     // Check if the memory contains the correct values.
@@ -50,7 +50,7 @@ TEST(AllocatorTest, TestArrayNotation) {
 
     db.start_txn(DB_WRITE_TXN);
 
-    const size_t arr1_size = db.conf.get_sys_page_size() / 4 - db.conf.get_small_align(); // Compensate for null ref
+    const size_t arr1_size = db.conf.get_sys_page_size() / 4 - db.conf.get_align(); // Compensate for null ref
     const size_t arr2_size = (db.conf.get_sys_page_size() / 4) / sizeof(uint16_t);
     const size_t arr3_size = (db.conf.get_sys_page_size() / 2) / sizeof(uint32_t);
 
@@ -84,12 +84,12 @@ TEST(AllocatorTest, TestFreeLFBlock) {
 
     db.start_txn(DB_WRITE_TXN);
 
-    const size_t arr1_size = db.conf.get_small_align();
-    const size_t arr2_size = db.conf.get_small_align() * 3;
-    const size_t arr3_size = db.conf.get_small_align() * 2;
-    const size_t arr4_size = db.conf.get_small_align();
-    const size_t arr5_size = db.conf.get_small_align() * 6;
-    const size_t arr6_size = db.conf.get_small_align() * 7;
+    const size_t arr1_size = db.conf.get_align();
+    const size_t arr2_size = db.conf.get_align() * 3;
+    const size_t arr3_size = db.conf.get_align() * 2;
+    const size_t arr4_size = db.conf.get_align();
+    const size_t arr5_size = db.conf.get_align() * 6;
+    const size_t arr6_size = db.conf.get_align() * 7;
 
     const Ref<uint8_t> arr1 = db.malloc<uint8_t>(arr1_size);
     const Ref<uint8_t> arr2 = db.malloc<uint8_t>(arr2_size);
@@ -114,28 +114,6 @@ TEST(AllocatorTest, TestFreeLFBlock) {
 
     EXPECT_EQ(arr1, arr6); // Same as above. If the allocator works correctly, arr6 should be at the same
                            // address as arr1 and arr5.
-
-    db.commit_txn();
-
-    remove("test.db");
-}
-
-TEST(AllocatorTest, LargeAlignmentTest) {
-    FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-
-    db.start_txn(DB_WRITE_TXN);
-    // Will be put in the second page because of the first SMALL_ALIGNMENT bytes being reserved for nullref. Hence we
-    // should have SYSTEM_PAGE_SIZE - SMALL_ALIGNMENT bytes left in the first page.
-    auto size1 = db.conf.get_large_align();
-    auto size2 = size1 - db.conf.get_small_align() - sizeof(BlockDescr);
-    const Ref<uint8_t> arr1 = db.malloc<uint8_t>(size1);
-    for (int i = 0; i < size1; i++) arr1[i] = 0xFF;
-
-    const Ref<uint8_t> arr2 = db.malloc<uint8_t>(size2);
-    for (int i = 0; i < size2; i++) arr2[i] = 0xEE;
-
-    for (int i = 0; i < size2; i++) EXPECT_EQ(arr2[i], 0xEE);
-    for (int i = size2; i < size1 + size2; i++) EXPECT_EQ(arr2[i], 0xFF);
 
     db.commit_txn();
 

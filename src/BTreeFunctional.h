@@ -147,6 +147,7 @@ private:
 
         // Find the index of the first key greater than or equal to key
         int i = 0;
+
         while (i < x->n && key > x->key_values[i].key) i++;
 
         return i < x->n && key == x->key_values[i].key
@@ -680,6 +681,13 @@ public:
 
         debug_print(btree->root, std::string("Root"));
         std::cout << std::endl;
+    }
+
+    static void print_keys(NodeRef<T, V, t> node) {
+        std::cout << "-------------------------------------------------------------" << std::endl;
+        for (size_t i = 0; i < node->n; ++i) {
+            std::cout << "(i=" << i << ", size=" << node->key_values[i].key.size << ", value=" << node->key_values[i].key << ", type_index=" << node->key_values[i].key.key_storage.index() <<  ")" << std::endl;
+        }
     }
 };
 

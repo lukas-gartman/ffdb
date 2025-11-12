@@ -13,13 +13,9 @@ TEST(BTreeFunctionalTest, FindTTest) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
-    db.start_txn(DB_WRITE_TXN);
-
     constexpr int t = find_t<double, char>(4096);
     EXPECT_TRUE(sizeof(Node<double, char, t>) <= 4096);
     EXPECT_TRUE(sizeof(Node<double, char, t + 1>) > 4096);
-
-    db.commit_txn();
 
     remove("test.db");
 }
@@ -385,16 +381,3 @@ TEST(BTreeFunctionalTest, RootNodeDelete) {
 
     remove("test.db");
 }
-
-// TEST(BTreeTest, getSize) {
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-//     EXPECT_EQ((sizeof(BTree::Node<int, int, 5>)), (BTree::sizeof_node<int, int>(5)));
-// }

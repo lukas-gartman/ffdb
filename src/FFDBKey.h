@@ -9,7 +9,7 @@
 #include "FFDB.h"
 #include "Typedefs.h"
 
-constexpr size_t PREFIX_SIZE = 8;
+constexpr size_t PREFIX_SIZE = FFDB_KEY_PREFIX_SIZE;
 
 template <PrimitiveVal T>
 class FFDBKey {
@@ -68,6 +68,7 @@ public:
         FFDBKey key_copy;
         key_copy.size = size;
         key_copy.key_storage = nl;
+
         return key_copy;
     }
 
@@ -188,7 +189,7 @@ public:
     friend std::ostream &operator<<(std::ostream &os, const FFDBKey &key) {
         if (std::holds_alternative<T>(key.key_storage))
             os << std::get<T>(key.key_storage);
-        else {
+        else if (std::holds_alternative<LargeKey>(key.key_storage)) {
             const auto& lk = std::get<LargeKey>(key.key_storage);
 
             // Avoid heap leak and only copy available bytes
@@ -213,6 +214,12 @@ public:
                 }
                 os << "]";
             }
+        }
+        else if (key.key_storage.valueless_by_exception()) {
+            os << "[Valueless by exception]";
+        }
+        else {
+            os << "[Corrupted Value]";
         }
         return os;
     }

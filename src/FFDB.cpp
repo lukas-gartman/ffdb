@@ -12,7 +12,7 @@ Offset FFDB::malloc_internal(Size bytes) {
     if (db_mode != DB_WRITE_TXN)
         throw std::runtime_error("Database not in write mode.");
 
-    bytes = align_bytes(bytes, conf.get_small_align());
+    bytes = align_bytes(bytes, conf.get_align());
 
     Offset offset;
 
@@ -46,9 +46,9 @@ Offset FFDB::malloc_internal(Size bytes) {
 
     if (bytes > mmap_size - writer_state.top) resize_map(bytes);
 
-    if (conf.is_page_boundry_aware() && bytes >= conf.get_align_threshold()) {
+    if (conf.is_page_boundry_aware() && bytes >= conf.get_log_page_size()) {
         auto bytes_left = bytes_left_in_page(writer_state.top, conf.get_log_page_size());
-
+        std::cout << bytes_left << std::endl;
         // Maybe not obvious: at first glance it may look like we need a specialized resize check here where we check
         // bytes + bytes_left instead. This is not necessary as bytes and bytes + bytes_left occupies the exact same pages.
         // We have that bytes == 4096 * amount_of_pages - bytes_left, where bytes_left is the amount of bytes not occupied by
@@ -58,7 +58,7 @@ Offset FFDB::malloc_internal(Size bytes) {
 
         // If block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
         Size bd_size = sizeof(BlockDescr);
-        if (bytes_left >= bd_size + conf.get_small_align()) {
+        if (bytes_left >= bd_size + conf.get_align()) {
             lo_block.ofs += bd_size;
             lo_block.size -= bd_size;
 
@@ -88,8 +88,7 @@ void FFDB::free_internal(Offset offset, Size bytes) {
 
     if (offset == 0) return;
 
-    Size align = bytes > conf.get_align_threshold() ? conf.get_large_align() : conf.get_small_align();
-    bytes = align_bytes(bytes, align);
+    bytes = align_bytes(bytes, conf.get_align());
 
     Size txn_id = (offset >= shared_state->top) ? 0 : shared_state->curr_txn_id;
 
@@ -155,7 +154,7 @@ Ref<BlockDescr> FFDB::new_block_descr(Block block, Ref<BlockDescr> left, Ref<Blo
                 writer_state.unused_descrs->next_unused;
     }
     else {
-        const Size bytes = align_bytes(sizeof(BlockDescr), conf.get_small_align());
+        const Size bytes = align_bytes(sizeof(BlockDescr), conf.get_align());
 
         if (bytes > shared_state->mmap_size - writer_state.top)
             resize_map(bytes);
@@ -552,7 +551,7 @@ registered_rev(nullptr) {
         shared_state->rev_lock.init();
         shared_state->resize_rw_lock.init();
 
-        shared_state->top = this->conf.get_small_align(); // 0 is null
+        shared_state->top = this->conf.get_align(); // 0 is null
 
         // The rest is zeroed by ftruncate
     }
