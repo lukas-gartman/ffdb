@@ -210,14 +210,22 @@ public:
 
     DBConf conf;
 
-    template<class A> Ref<A> malloc(Size elem_amount = 1, Size padding = 0) {
+    template<class A> Ref<A> malloc(Size elem_amount = 1) {
         if (elem_amount == 0) return 0;
-        return malloc_internal(sizeof(A) * elem_amount + padding);
+        return malloc_internal(sizeof(A) * elem_amount);
     }
 
-    template<class A> void free(Ref<A> ref, Size elem_amount = 1, Size padding = 0) {
+    template<class A> void free(Ref<A> ref, Size elem_amount = 1) {
         if (elem_amount == 0) return;
-        free_internal(ref.as_offset(), sizeof(A) * elem_amount + padding);
+        free_internal(ref.as_offset(), sizeof(A) * elem_amount);
+    }
+
+    template<class A> Ref<A> malloc_bytes(Size bytes) {
+        return malloc_internal(bytes);
+    }
+
+    template<class A> void free_bytes(Ref<A> ref, Size bytes) {
+        free_internal(ref.as_offset(), bytes);
     }
 
     Revision *register_revision(Offset root, Id txn_id);
