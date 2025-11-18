@@ -110,7 +110,8 @@ private:
         auto rl = r->left;
         auto rr = r->right;
 
-        return upd_node(r, upd_node(tree, l, rl), rr);
+        auto new_tree = upd_node(tree, l, rl);
+        return upd_node(r, new_tree, rr);
     }
 
     static NodeRef rotate_right(NodeRef tree) {
@@ -121,7 +122,8 @@ private:
         auto lr = l->right;
         auto r = tree->right;
 
-        return upd_node(l, ll, upd_node(tree, lr, r));
+        auto new_tree = upd_node(tree, lr, r);
+        return upd_node(l, ll, new_tree);
     }
 
     static NodeRef rotate_dleft(NodeRef tree) {
@@ -134,7 +136,9 @@ private:
         auto rll = rl->left;
         auto rlr = rl->right;
 
-        return upd_node(rl, upd_node(tree, l, rll), upd_node(r, rlr, rr));
+        auto new_left = upd_node(tree, l, rll);
+        auto new_right = upd_node(r, rlr, rr);
+        return upd_node(rl, new_left, new_right);
     }
 
     static NodeRef rotate_dright(NodeRef tree) {
@@ -147,7 +151,9 @@ private:
         auto lrr = lr->right;
         auto r = tree->right;
 
-        return upd_node(lr, upd_node(tree, ll, lrl), upd_node(tree, lrr, r));
+        auto new_left = upd_node(l, ll, lrl);
+        auto new_right = upd_node(tree, lrr, r);
+        return upd_node(lr, new_left, new_right);
     }
 
     static NodeRef balancel(NodeRef tree) {
@@ -325,9 +331,8 @@ public:
     }
 
     template<ValidKeyArg<T> K>
-    static NodeRef remove(NodeRef tree, const K &key) {
-        auto [new_tree, _] = remove_rec(tree, key);
-        return new_tree;
+    static std::pair<NodeRef, bool> remove(NodeRef tree, const K &key) {
+        return remove_rec(tree, key);
     }
 
     static Size get_size(NodeRef node) {

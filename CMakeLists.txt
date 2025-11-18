@@ -42,14 +42,25 @@ else()
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable Google Benchmark's own tests")
     add_subdirectory(external/googlebenchmark)
 
-    add_executable(ffdb_benchmarks
+    set(BENCH_COMMON
         benchmarks/main.cpp
-        benchmarks/btree_bench.cpp
-        #benchmarks/sbt_bench.cpp
         benchmarks/utils.cpp
         ${FFDB_SOURCES}
     )
-    target_link_libraries(ffdb_benchmarks benchmark::benchmark pthread)
+
+    add_executable(btree_bench
+        benchmarks/btree_bench.cpp
+        ${BENCH_COMMON}
+    )
+    target_link_libraries(btree_bench benchmark::benchmark pthread)
+    target_compile_options(btree_bench PRIVATE -march=native -mtune=native -fno-omit-frame-pointer)
+
+    add_executable(sbt_bench
+        benchmarks/sbt_bench.cpp
+        ${BENCH_COMMON}
+    )
+    target_link_libraries(sbt_bench benchmark::benchmark pthread)
+    target_compile_options(sbt_bench PRIVATE -march=native -mtune=native -fno-omit-frame-pointer)
 endif()
 
 add_executable(ffdb

@@ -82,7 +82,7 @@ public:
     bdtree_delta(bdtree_delta), bdtree_gamma(bdtree_gamma),
     page_boundry_aware(page_boundry_aware) {}
 
-    DBConf() : DBConf(FFDB_PHY_PAGE_SIZE, FFDB_LOG_PAGE_SIZE, FFDB_ALIGN, 3, 2, FFDB_PAGE_BOUNDRY_AWARE) {};
+    DBConf() : DBConf(FFDB_PHYSICAL_PAGE_SIZE, FFDB_LOGICAL_PAGE_SIZE, FFDB_ALIGN, 3, 2, FFDB_PAGE_BOUNDARY_AWARE) {};
 
     Size get_sys_page_size() const { return sys_page_size; }
     Size get_log_page_size() const { return log_page_size; }

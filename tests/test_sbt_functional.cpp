@@ -43,7 +43,8 @@ TEST(SBTTestFunctional, Remove) {
     tree = SBT::insert(tree, 10, 1.0f);
     tree = SBT::insert(tree, 20, 2.0f);
     tree = SBT::insert(tree, 5, 3.0f);
-    tree = SBT::remove(tree, 10);
+    auto [tree_after_remove, removed] = SBT::remove(tree, 10);
+    tree = tree_after_remove;
 
     EXPECT_FALSE(SBT::get_value(tree, 10) == 1.0f);
     EXPECT_TRUE(SBT::get_value(tree, 20) == 2.0f);
@@ -91,13 +92,15 @@ TEST(SBTTestFunctional, CopyOnWrite) {
     // modify tree
     db.start_txn(DB_WRITE_TXN);
     auto tree2 = SBT::insert(tree1, 4, 4.0f);
-    tree2 = SBT::remove(tree2, 2);
+    auto [tree2_after_remove, r2] = SBT::remove(tree2, 2);
+    tree2 = tree2_after_remove;
     db.commit_txn();
 
     // further modify
     db.start_txn(DB_WRITE_TXN);
     auto tree3 = SBT::insert(tree2, 5, 5.0f);
-    tree3 = SBT::remove(tree3, 1);
+    auto [tree3_after_remove, r3] = SBT::remove(tree3, 1);
+    tree3 = tree3_after_remove;
     db.commit_txn();
 
     db.start_txn(DB_WRITE_TXN);
