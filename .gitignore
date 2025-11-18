@@ -34,6 +34,8 @@
 .clang-format
 .idea
 cmake-build-debug
+cmake-build-release
+benchmarks/bin
 build
 docs
 db-engine
