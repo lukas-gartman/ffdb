@@ -194,7 +194,7 @@ private:
     void lock();
     void unlock();
 
-    void cleanup() noexcept;
+    void cleanup();
 
     void resize_map(Size min_size);
 
@@ -207,6 +207,14 @@ private:
 
 public:
     FFDB(string filepath, int flags, int mode, Size init_size, std::optional<DBConf> conf = std::nullopt);
+
+    FFDB(const FFDB&) = delete;
+    FFDB& operator=(const FFDB&) = delete;
+
+    FFDB(FFDB&& other) noexcept;
+    FFDB& operator=(FFDB&& other) noexcept;
+
+    ~FFDB();
 
     DBConf conf;
 

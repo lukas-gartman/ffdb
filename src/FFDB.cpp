@@ -431,8 +431,7 @@ void FFDB::unlock() {
     else throw std::invalid_argument("Invalid DBMode");
 }
 
-// TODO: Remove noexcep
-void FFDB::cleanup() noexcept {
+void FFDB::cleanup() {
     if (fd >= 0) {
         close(fd);
         fd = -1;
@@ -557,6 +556,12 @@ registered_rev(nullptr) {
     }
 
     db_mode = DB_NO_TXN;
+}
+
+FFDB::~FFDB() {
+    munmap(shared_state, conf.get_sys_page_size());
+    munmap(base, mmap_size);
+    close(fd);
 }
 
 Revision *FFDB::register_revision(Offset root, Id txn_id) {

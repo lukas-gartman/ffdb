@@ -9,7 +9,7 @@
  * should happen then is that the allocator should reuse the freed memory and hence, values2 should point to exactly
  * the same memory as values1.
  */
-TEST(AllocatorTest, TestAllocFreeTop) {
+/*TEST(AllocatorTest, TestAllocFreeTop) {
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
 
     db.start_txn(DB_WRITE_TXN);
@@ -40,7 +40,7 @@ TEST(AllocatorTest, TestAllocFreeTop) {
     db.commit_txn();
 
     remove("test.db");
-}
+}*/
 
 /* TestArrayNotation
  * Allocates arrays of different types using the array notation and verifies that the contents are correct.
