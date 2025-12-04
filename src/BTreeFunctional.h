@@ -48,6 +48,7 @@ class BTreeHeader {
 private:
     NodeRef<T, V, t> root;
     int size;
+    Id txn_id;
 
 public:
     friend class BTreeFunctional<T, V, t>;
@@ -137,6 +138,22 @@ private:
 
         free_node(node);
         return new_node;
+    }
+
+    static BTreeRef<T, V, t> upd_header(BTreeRef<T, V, t> header, NodeRef<T, V, t> root, int size) {
+        if (header->txn_id == current_db()->get_txn_id()) {
+            header->root = root;
+            header->size = size;
+            return header;
+        }
+
+        auto new_header =  current_db()->malloc<BTreeHeader<T, V, t>>();
+        new_header->root = root;
+        new_header->size = size;
+        new_header->txn_id = current_db()->get_txn_id();
+
+        current_db()->free(header);
+        return new_header;
     }
 
     // Originally search
@@ -554,24 +571,19 @@ public:
         auto btree = current_db()->malloc<BTreeHeader<T, V, t>>();
         btree->size = 0;
         btree->root = REF_NULL;
+        btree->txn_id = current_db()->get_txn_id();
         return btree;
     }
 
     template<ValidKeyArg<T> K>
     static BTreeRef<T, V, t> insert(BTreeRef<T, V, t> btree, const K &key, V value) {
         if (btree->root == REF_NULL) {
-            auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
+            btree = upd_header(btree, create_node(true), 1);
+            btree->root->key_values[0].key = key;
+            btree->root->key_values[0].value = value;
+            btree->root->n = 1;
 
-            new_btree->root = create_node(true);
-            new_btree->root->key_values[0].key = key;
-            new_btree->root->key_values[0].value = value;
-            new_btree->root->n = 1;
-
-            new_btree->size = 1;
-
-            current_db()->free(btree);
-
-            return new_btree;
+            return btree;
         }
 
         // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
@@ -586,28 +598,14 @@ public:
             // Splits old root and moves its middle key up to the new root
             new_root = insert_non_full(split_child(upd_node(new_root), 0), key, value).first;
 
-            auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
-
-            new_btree->root = new_root;
-            new_btree->size = btree->size + 1;
-
-            current_db()->free(btree);
-
-            return new_btree;
+            return upd_header(btree, new_root, btree->size + 1);
         }
 
         auto [new_root, inserted] = insert_non_full(upd_node(btree->root), key, value);
 
         if (!inserted) return btree;
 
-        auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
-
-        new_btree->root = new_root;
-        new_btree->size = btree->size + 1;
-
-        current_db()->free(btree);
-
-        return new_btree;
+        return upd_header(btree, new_root, btree->size + 1);
     }
 
     template<ValidKeyArg<T> K>
@@ -618,19 +616,15 @@ public:
 
         if (!removed) { return std::make_pair(btree, false); }
 
-        // TODO: As long as it is within the same txn we should only need to modify btree, not copy it like this.
-        auto new_btree = current_db()->malloc<BTreeHeader<T, V, t>>();
-        new_btree->root = new_root;
-        new_btree->size = btree->size - 1;
-        current_db()->free(btree); // Will be freed immediately since it was allocated this txn
+        btree = upd_header(btree, new_root, btree->size - 1);
 
         // Make sure to clean up the root if it has no keys left
         if (new_root->n == 0) {
-            new_btree->root = new_root->is_leaf ? REF_NULL : new_root->children[0];
+            btree->root = new_root->is_leaf ? REF_NULL : new_root->children[0];
             free_node(new_root);
         }
 
-        return std::make_pair(new_btree, removed);
+        return std::make_pair(btree, removed);
     }
 
     static int size(BTreeRef<T, V, t> btree) {
@@ -663,12 +657,7 @@ public:
         auto [new_root, updated] = update_value_in_node(btree->root, key, f);
         if (!updated) return btree;
 
-        auto old_btree = btree;
-        btree = current_db()->malloc<BTreeHeader<T, V, t>>();
-        btree->root = new_root;
-        btree->size = old_btree->size;
-
-        return btree;
+        return upd_header(btree, new_root, btree->size);
     }
 
     template <ValidKeyArg<T> K>
