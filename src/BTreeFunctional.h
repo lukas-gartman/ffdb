@@ -110,6 +110,14 @@ constexpr int find_t(Size bytes) {
 template<PrimitiveVal T, typename V, int t>
 class BTreeFunctional {
 private:
+    struct InsertRes {
+        bool split = false;
+        bool inserted = false;
+        NodeRef<T, V, t> node; // Node that was split (or not)
+        NodeRef<T, V, t> right_node; // Node created by split (or not)
+        KeyValue<T, V> middle_key; // Key to propagate up.
+    };
+
     static NodeRef<T, V, t> create_node(bool is_leaf) {
 
         auto node = current_db()->malloc<Node<T, V, t>>();
@@ -173,6 +181,8 @@ private:
             : find_node(x->children[i], key); // Search in the child
     }
 
+    // TODO: Remove
+    /*
     static NodeRef<T, V, t> split_child(NodeRef<T, V, t> x, int i) {
         NodeRef<T, V, t> y = upd_node(x->children[i]);
         // Ensure parent points to the updated (CoW) child
@@ -213,8 +223,30 @@ private:
         ++x->n;
 
         return x;
+    }*/
+
+    static InsertRes split_node(NodeRef<T, V, t> x) {
+        auto y = create_node(x->is_leaf);
+        y->n = t - 1;
+
+        // Copy last t-1 keys into y
+        for (int j = 0; j < t - 1; j++)
+            y->key_values[j] = x->key_values[j + t];
+
+        if (!y->is_leaf) {
+            for (int j = 0; j < t; j++)
+                y->children[j] = x->children[j + t];
+        }
+
+        KeyValue<T, V> middle_key = x->key_values[t - 1];
+
+        x->n = t - 1;
+
+        return {true, true, x, y, middle_key};
     }
 
+    // TODO: remove
+    /*
     template<ValidKeyArg<T> K>
     static std::pair<NodeRef<T, V, t>, bool> insert_non_full(NodeRef<T, V, t> x, const K &key, V value) {
         // Find the position to insert the new key, starting from the right
@@ -258,6 +290,66 @@ private:
         auto [child, collision] = insert_non_full(x->children[i], key, value);
         x->children[i] = child;
         return std::make_pair(x, collision);
+    }*/
+
+    template<ValidKeyArg<T> K>
+    static InsertRes insert_rec(NodeRef<T, V, t> x, const K &key, V value) {
+        // Find the position to insert the new key, starting from the right
+        int i = x->n - 1;
+
+        if (x->is_leaf) {
+            // Check if the key already exists
+            for (int j = 0; j < x->n; ++j) {
+                if (x->key_values[j].key == key) return {false, false, x};
+            }
+
+            x = upd_node(x);
+
+            // Shift keys to the right to make room for the new key
+            while (i >= 0 && key < x->key_values[i].key) {
+                x->key_values[i + 1] = x->key_values[i];
+                --i;
+            }
+
+            // Insert the new key
+            x->key_values[i + 1] = {key, value};
+        }
+        else {
+            // Internal node
+            while (i >= 0 && key < x->key_values[i].key) --i;
+            ++i;
+
+            // Key found in internal node, abortion.
+            if (x->key_values[i - 1].key == key) return {false, false, x};
+
+            auto ins_res = insert_rec(x->children[i], key, value);
+
+            // Insertion failed, abort.
+            if (!ins_res.inserted) return {false, false, x};
+
+            // Insertion successful, CoW x.
+            x = upd_node(x);
+
+            if (!ins_res.split) {
+                x->children[i] = ins_res.node;
+                return {false, true, x};
+            }
+
+            for (int j = x->n; j > i; --j)
+                x->children[j + 1] = x->children[j];
+            x->children[i + 1] = ins_res.right_node;
+
+            for (int j = x->n; j > i; --j)
+                x->key_values[j] = x->key_values[j - 1];
+            x->key_values[i] = ins_res.middle_key;
+        }
+
+        // Key successfully inserted this recursion
+        x->n = x->n + 1;
+
+        if (x->n < 2 * t - 1) return {false, true, x};
+
+        return split_node(x);
     }
 
     static KeyValue<T, V> get_in_order_predecessor(NodeRef<T, V, t> node, int i) {
@@ -575,6 +667,8 @@ public:
         return btree;
     }
 
+    // TODO: Remove
+    /*
     template<ValidKeyArg<T> K>
     static BTreeRef<T, V, t> insert(BTreeRef<T, V, t> btree, const K &key, V value) {
         if (btree->root == REF_NULL) {
@@ -589,12 +683,11 @@ public:
         // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
         if (find_node(btree->root, key) != REF_NULL) return btree;
 
-        // Check if the root is full and needs to be split
+        // Split if node is full.
         if (btree->root->n == 2 * t - 1) {
             auto new_root = create_node(false);
             new_root->children[0] = btree->root; // Make the old root a child of the new root
-
-            //btree->root = new_root;
+            
             // Splits old root and moves its middle key up to the new root
             new_root = insert_non_full(split_child(upd_node(new_root), 0), key, value).first;
 
@@ -604,6 +697,32 @@ public:
         auto [new_root, inserted] = insert_non_full(upd_node(btree->root), key, value);
 
         if (!inserted) return btree;
+
+        return upd_header(btree, new_root, btree->size + 1);
+    }*/
+
+    template<ValidKeyArg<T> K>
+    static BTreeRef<T, V, t> insert(BTreeRef<T, V, t> btree, const K &key, V value) {
+        if (btree->root == REF_NULL) {
+            btree = upd_header(btree, create_node(true), 1);
+            btree->root->key_values[0].key = key;
+            btree->root->key_values[0].value = value;
+            btree->root->n = 1;
+
+            return btree;
+        }
+
+        auto ins_res = insert_rec(btree->root, key, value);
+
+        if (!ins_res.inserted) return btree;
+
+        if (!ins_res.split) return upd_header(btree, ins_res.node, btree->size + 1);
+
+        auto new_root = create_node(false);
+        new_root->key_values[0] = ins_res.middle_key;
+        new_root->children[0] = ins_res.node;
+        new_root->children[1] = ins_res.right_node;
+        new_root->n = 1;
 
         return upd_header(btree, new_root, btree->size + 1);
     }
