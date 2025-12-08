@@ -46,38 +46,34 @@ Offset FFDB::malloc_internal(Size bytes) {
 
     if (bytes > mmap_size - writer_state.top) resize_map(bytes);
 
-    if (conf.is_page_boundry_aware() && bytes >= conf.get_log_page_size()) {
-        auto bytes_left = bytes_left_in_page(writer_state.top, conf.get_log_page_size());
-        std::cout << bytes_left << std::endl;
-        // Maybe not obvious: at first glance it may look like we need a specialized resize check here where we check
-        // bytes + bytes_left instead. This is not necessary as bytes and bytes + bytes_left occupies the exact same pages.
-        // We have that bytes == 4096 * amount_of_pages - bytes_left, where bytes_left is the amount of bytes not occupied by
-        // bytes in the last page and amount_of_pages > 1. Hence bytes + bytes_left == amount_of_pages.
+    if (auto bytes_left = bytes_left_in_page(writer_state.top, conf.get_log_page_size());
+        conf.is_page_boundry_aware() && bytes >= conf.get_log_page_size() && bytes_left < conf.get_log_page_size()) {
 
-        Block lo_block = {bytes_left > 0 ? writer_state.top : 0, bytes_left, shared_state->curr_txn_id};
+        Block lo_block = {writer_state.top, bytes_left, shared_state->curr_txn_id};
 
-        // If block descriptor fits in lo_block and lo_block fits the smallest allocatable size.
-        Size bd_size = sizeof(BlockDescr);
-        if (bytes_left >= bd_size + conf.get_align()) {
-            lo_block.ofs += bd_size;
-            lo_block.size -= bd_size;
+        // If needed and if possible, a block descriptor will be inserted in lo_block.
+        if (auto bd_size = sizeof(BlockDescr); bytes_left > bd_size) {
+            // If this is true, a bd will be inserted and hence the top will be increased and lo_block shrinks.
+            if (writer_state.lf_block.ofs != 0 && writer_state.unused_descrs == 0) {
+                lo_block.ofs += bd_size;
+                lo_block.size -= bd_size;
+                bytes_left -= bd_size;
+            }
+            set_lf_block(lo_block);
 
-            writer_state.free_blocks = ins_bd_tree(writer_state.free_blocks, lo_block);
-            bytes_left -= bd_size; // Update bytes_left because ins_bd_descr updated writer_state.top.
-            lo_block = {0, 0, 0};
+            writer_state.top += bytes_left;
         }
-
-        writer_state.top += bytes_left;
-        offset = writer_state.top;
-        writer_state.top += bytes;
-
-        // lo_block exists and has not been inserted yet.
-        if (lo_block.ofs > 0) set_lf_block(lo_block);
+        else {
+            // TODO: Maybe need to test this branch.
+            offset = writer_state.top;
+            writer_state.top += bytes;
+            set_lf_block(lo_block);
+            return offset;
+        }
     }
-    else {
-        offset = writer_state.top;
-        writer_state.top += bytes;
-    }
+
+    offset = writer_state.top;
+    writer_state.top += bytes;
 
     return offset;
 }

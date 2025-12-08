@@ -29,6 +29,7 @@ else()
         tests/test_btree_functional.cpp
         tests/test_sbt_functional.cpp
         tests/test_ffdb_key.cpp
+        tests/test_memutils.cpp
         ${FFDB_SOURCES}
     )
     target_link_libraries(ffdb_tests gtest gtest_main)

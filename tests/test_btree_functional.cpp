@@ -9,19 +9,25 @@
 #include <random>
 #include <unordered_set>
 
+#if FFDB_PAGE_BOUNDARY_AWARE
+constexpr int t = find_t<int, float>(FFDB_LOGICAL_PAGE_SIZE);
+#else
+constexpr int t = 3;
+#endif
+
 TEST(BTreeFunctionalTest, FindTTest) {
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
 
-    constexpr int t = find_t<double, char>(4096);
-    EXPECT_TRUE(sizeof(Node<double, char, t>) <= 4096);
-    EXPECT_TRUE(sizeof(Node<double, char, t + 1>) > 4096);
+    constexpr int u = find_t<double, char>(4096);
+    EXPECT_TRUE(sizeof(Node<double, char, u>) <= 4096);
+    EXPECT_TRUE(sizeof(Node<double, char, u + 1>) > 4096);
 
     remove("test.db");
 }
 
 TEST(BTreeFunctionalTest, InsertTest) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -67,7 +73,7 @@ TEST(BTreeFunctionalTest, InsertTest) {
 }
 
 TEST(BTreeFunctionalTest, Transactions) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 1024);
@@ -100,7 +106,7 @@ TEST(BTreeFunctionalTest, Transactions) {
 }
 
 TEST(BTreeFunctionalTest, SequentialInsertTest) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
 
@@ -124,7 +130,7 @@ TEST(BTreeFunctionalTest, SequentialInsertTest) {
 }
 
 TEST(BTreeFunctionalTest, RandomInsert) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -153,7 +159,7 @@ TEST(BTreeFunctionalTest, RandomInsert) {
 }
 
 TEST(BTreeFunctionalTest, DuplicateTest) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16384);
@@ -181,7 +187,7 @@ TEST(BTreeFunctionalTest, DuplicateTest) {
 }
 
 TEST(BTreeFunctionalTest, ManualDuplicateTest) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -204,7 +210,7 @@ TEST(BTreeFunctionalTest, ManualDuplicateTest) {
 }
 
 TEST(BTreeFunctionalTest, RemoveTest) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -224,7 +230,7 @@ TEST(BTreeFunctionalTest, RemoveTest) {
 }
 
 TEST(BTreeFunctionalTest, RemoveTestCoW) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -281,7 +287,7 @@ TEST(BTreeFunctionalTest, RemoveTestCoW) {
 }
 
 TEST(BTreeFunctionalTest, OtherFunCow) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -322,7 +328,7 @@ TEST(BTreeFunctionalTest, OtherFunCow) {
 }
 
 TEST(BTreeFunctionalTest, SequentialInsertRemove) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
@@ -346,7 +352,7 @@ TEST(BTreeFunctionalTest, SequentialInsertRemove) {
 }
 
 TEST(BTreeFunctionalTest, RootNodeDelete) {
-    using BT = BTreeFunctional<int, float, 3>;
+    using BT = BTreeFunctional<int, float, t>;
 
     remove("test.db");
     FFDB db("test.db", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 4096 * 16);
