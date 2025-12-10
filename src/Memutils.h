@@ -39,7 +39,7 @@ static Size bytes_left_in_page(Offset offset, Size log_page_size) {
  */
 static Size next_pow2_size(const Size curr_size, const Size min_size) {
     const Size n = ceil(log2((double) (min_size + curr_size)));
-    return 1 << n;
+    return Size{1} << n;
 }
 
 static uint8_t next_padovan_tbl[] = {
