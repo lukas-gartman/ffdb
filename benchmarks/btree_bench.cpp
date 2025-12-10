@@ -70,7 +70,7 @@ static void Mixed(benchmark::State &state) {
     run_mixed_iteration<BT, BTRef>(state, N, words_all, dbfile);
 }
 
-// static constexpr int DEGREE = find_t<char, int>(192);
+//static constexpr int DEGREE = find_t<char, int>(FFDB_LOGICAL_PAGE_SIZE);
 static constexpr int DEGREE = 5;
 
 BENCHMARK_TEMPLATE(WordCount,    DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
