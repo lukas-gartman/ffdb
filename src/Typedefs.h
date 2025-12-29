@@ -5,11 +5,25 @@
 
 class FFDB;
 
+#ifndef FFDB_ALIGN
 #define FFDB_ALIGN 16 // Bits
+#endif
+
+#ifndef FFDB_PHYSICAL_PAGE_SIZE
 #define FFDB_PHYSICAL_PAGE_SIZE 4096 // Bytes
+#endif
+
+#ifndef FFDB_LOGICAL_PAGE_SIZE
 #define FFDB_LOGICAL_PAGE_SIZE 512 // Bytes
+#endif
+
+#ifndef FFDB_PAGE_BOUNDARY_AWARE
 #define FFDB_PAGE_BOUNDARY_AWARE true
+#endif
+
+#ifndef FFDB_KEY_PREFIX_SIZE
 #define FFDB_KEY_PREFIX_SIZE 8
+#endif
 
 extern __thread unsigned char *current_base __attribute__((tls_model("initial-exec")));
 extern __thread FFDB *_current_db __attribute__((tls_model("initial-exec")));

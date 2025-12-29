@@ -56,12 +56,34 @@ else()
     target_link_libraries(btree_bench benchmark::benchmark pthread)
     target_compile_options(btree_bench PRIVATE -march=native -mtune=native -fno-omit-frame-pointer)
 
+    # Allow configuration overrides
+    if(DEFINED FFDB_LOGICAL_PAGE_SIZE)
+        target_compile_definitions(btree_bench PRIVATE FFDB_LOGICAL_PAGE_SIZE=${FFDB_LOGICAL_PAGE_SIZE})
+    endif()
+    if(DEFINED FFDB_PAGE_BOUNDARY_AWARE)
+        target_compile_definitions(btree_bench PRIVATE FFDB_PAGE_BOUNDARY_AWARE=${FFDB_PAGE_BOUNDARY_AWARE})
+    endif()
+    if(DEFINED FFDB_KEY_PREFIX_SIZE)
+        target_compile_definitions(btree_bench PRIVATE FFDB_KEY_PREFIX_SIZE=${FFDB_KEY_PREFIX_SIZE})
+    endif()
+    if(DEFINED BENCH_DEGREE)
+        target_compile_definitions(btree_bench PRIVATE BENCH_DEGREE=${BENCH_DEGREE})
+    endif()
+
     add_executable(sbt_bench
         benchmarks/sbt_bench.cpp
         ${BENCH_COMMON}
     )
     target_link_libraries(sbt_bench benchmark::benchmark pthread)
     target_compile_options(sbt_bench PRIVATE -march=native -mtune=native -fno-omit-frame-pointer)
+
+    # Allow configuration overrides
+    if(DEFINED FFDB_LOGICAL_PAGE_SIZE)
+        target_compile_definitions(sbt_bench PRIVATE FFDB_LOGICAL_PAGE_SIZE=${FFDB_LOGICAL_PAGE_SIZE})
+    endif()
+    if(DEFINED FFDB_KEY_PREFIX_SIZE)
+        target_compile_definitions(sbt_bench PRIVATE FFDB_KEY_PREFIX_SIZE=${FFDB_KEY_PREFIX_SIZE})
+    endif()
 endif()
 
 add_executable(ffdb
