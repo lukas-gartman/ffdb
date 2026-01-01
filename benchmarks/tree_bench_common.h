@@ -77,10 +77,16 @@ static void run_wordcount_iteration(benchmark::State &state, Size N, const std::
         latencies.reserve(N);
         auto total_start = std::chrono::steady_clock::now();
 
-        auto db = open_db(dbfile);
+        FFDB db = open_db(dbfile);
         TreeRef tree = db.start_txn(DB_WRITE_TXN);
 
+        Size halfway_mark = N / 2;
         for (Size i = 0; i < N; ++i) {
+            if (i == halfway_mark) {
+                db.commit_txn(tree.as_offset());
+                tree = db.start_txn(DB_WRITE_TXN);
+            }
+
             auto op_start = std::chrono::steady_clock::now();
             auto t2 = TreeType::update_value(
                 tree, words[i], [](uint64_t v){ return v + 1; });
@@ -127,17 +133,23 @@ static void run_random_lookup_iteration(benchmark::State &state, Size N, const s
         {
             create_empty_db<TreeType>(dbfile, N);
 
-            FFDB db_build = open_db(dbfile);
-            TreeRef tree_build = db_build.start_txn(DB_WRITE_TXN);
+            FFDB db = open_db(dbfile);
+            TreeRef tree = db.start_txn(DB_WRITE_TXN);
 
+            Size halfway_mark = N / 2;
             for (Size i = 0; i < N; ++i) {
-                auto t2 = TreeType::update_value(tree_build, words[i], [](uint64_t v){ return v + 1; });
-                tree_build = t2 == tree_build
-                    ? TreeType::insert(tree_build, words[i], 1)
+                if (i == halfway_mark) {
+                    db.commit_txn(tree.as_offset());
+                    tree = db.start_txn(DB_WRITE_TXN);
+                }
+
+                auto t2 = TreeType::update_value(tree, words[i], [](uint64_t v){ return v + 1; });
+                tree = t2 == tree
+                    ? TreeType::insert(tree, words[i], 1)
                     : t2;
             }
 
-            db_build.commit_txn(tree_build.as_offset());
+            db.commit_txn(tree.as_offset());
         }
 
         FFDB db = open_db(dbfile);
@@ -177,8 +189,8 @@ static void run_insert_iteration(benchmark::State &state, Size N, const std::vec
         ::unlink(dbfile.c_str());
 
         create_empty_db<TreeType>(dbfile, N);
-        FFDB db = open_db(dbfile);
 
+        FFDB db = open_db(dbfile);
         TreeRef tree = db.start_txn(DB_WRITE_TXN);
 
         std::vector<std::string> ins_keys;
@@ -187,7 +199,14 @@ static void run_insert_iteration(benchmark::State &state, Size N, const std::vec
         std::vector<double> latencies;
         latencies.reserve(N);
         auto total_start = std::chrono::steady_clock::now();
+
+        Size halfway_mark = N / 2;
         for (Size i = 0; i < N; ++i) {
+            if (i == halfway_mark) {
+                db.commit_txn(tree.as_offset());
+                tree = db.start_txn(DB_WRITE_TXN);
+            }
+
             auto op_start = std::chrono::steady_clock::now();
             tree = TreeType::insert(tree, ins_keys[i], 1);
             auto op_end = std::chrono::steady_clock::now();
@@ -214,13 +233,20 @@ static void run_remove_iteration(benchmark::State &state, Size N, const std::vec
         ::unlink(dbfile.c_str());
 
         create_empty_db<TreeType>(dbfile, N);
-        FFDB db = open_db(dbfile);
 
+        FFDB db = open_db(dbfile);
         TreeRef tree = db.start_txn(DB_WRITE_TXN);
 
         std::vector<std::string> keys;
         build_unique_dataset(keys, words_all, N, "rem:");
+
+        Size halfway_mark = N / 2;
         for (Size i = 0; i < N; ++i) {
+            if (i == halfway_mark) {
+                db.commit_txn(tree.as_offset());
+                tree = db.start_txn(DB_WRITE_TXN);
+            }
+
             tree = TreeType::insert(tree, keys[i], 1);
         }
 
@@ -233,6 +259,11 @@ static void run_remove_iteration(benchmark::State &state, Size N, const std::vec
 
         auto total_start = std::chrono::steady_clock::now();
         for (Size i = 0; i < N; ++i) {
+            if (i == halfway_mark) {
+                db.commit_txn(tree.as_offset());
+                tree = db.start_txn(DB_WRITE_TXN);
+            }
+
             auto op_start = std::chrono::steady_clock::now();
             auto [t2, removed] = TreeType::remove(tree, rem_keys[i]);
             if (removed) {
@@ -281,19 +312,20 @@ static void run_mixed_iteration(benchmark::State &state, Size N, const std::vect
         ::unlink(dbfile.c_str());
 
         create_empty_db<TreeType>(dbfile, N);
-        FFDB db = open_db(dbfile);
 
+        FFDB db = open_db(dbfile);
         TreeRef tree = db.start_txn(DB_WRITE_TXN);
 
         std::vector<std::string> base_keys;
         build_unique_dataset(base_keys, words_all, N, "mix:");
+
         for (Size i = 0; i < base_keys.size(); ++i) {
             tree = TreeType::insert(tree, base_keys[i], 1);
         }
 
-        Size inserts = (N * 20) / 100;
-        Size removes = (N * 10) / 100;
-        Size lookups = N - inserts - removes;
+        Size inserts = (N * 20) / 100; // 20% inserts
+        Size removes = (N * 10) / 100; // 10% removes
+        Size lookups = N - inserts - removes; // 70% lookups
 
         std::vector<std::string> ins_keys;
         build_unique_dataset(ins_keys, words_all, inserts, "mix:ins:");
@@ -315,8 +347,15 @@ static void run_mixed_iteration(benchmark::State &state, Size N, const std::vect
         Size lookup_hits = 0, lookup_cnt = 0, removed_cnt = 0;
 
         auto total_start = std::chrono::steady_clock::now();
-        for (Op op : ops) {
+        Size halfway_mark = N / 2;
+        for (Size i = 0; i < N; ++i) {
+            if (i == halfway_mark) {
+                db.commit_txn(tree.as_offset());
+                tree = db.start_txn(DB_WRITE_TXN);
+            }
+
             auto op_start = std::chrono::steady_clock::now();
+            Op op = ops[i];
             if (op == Op::LOOKUP) {
                 if (look_i < queries.size()) {
                     auto val = TreeType::get_value(tree, queries[look_i++]);
