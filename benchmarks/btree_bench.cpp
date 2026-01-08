@@ -77,6 +77,16 @@ static constexpr int DEGREE = find_t<char, int>(FFDB_LOGICAL_PAGE_SIZE);
 static constexpr int DEGREE = BENCH_DEGREE;
 #endif
 
+static int setup_context = [] {
+    benchmark::AddCustomContext("btree_degree", std::to_string(DEGREE));
+    benchmark::AddCustomContext("logical_page_size", std::to_string(FFDB_LOGICAL_PAGE_SIZE));
+    benchmark::AddCustomContext("physical_page_size", std::to_string(FFDB_PHYSICAL_PAGE_SIZE));
+    benchmark::AddCustomContext("alignment_bits", std::to_string(FFDB_ALIGN));
+    benchmark::AddCustomContext("page_boundary_aware", FFDB_PAGE_BOUNDARY_AWARE ? "true" : "false");
+    benchmark::AddCustomContext("key_prefix_size", std::to_string(FFDB_KEY_PREFIX_SIZE));
+    return 0;
+}();
+
 BENCHMARK_TEMPLATE(WordCount,    DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(RandomLookup, DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(Insert,       DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);

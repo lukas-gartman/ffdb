@@ -65,6 +65,16 @@ static void Mixed(benchmark::State &state) {
     run_mixed_iteration<SBT, SBTRef>(state, N, words_all, dbfile);
 }
 
+static int setup_context = [] {
+    benchmark::AddCustomContext("tree_type", "SBT");
+    benchmark::AddCustomContext("logical_page_size", std::to_string(FFDB_LOGICAL_PAGE_SIZE));
+    benchmark::AddCustomContext("physical_page_size", std::to_string(FFDB_PHYSICAL_PAGE_SIZE));
+    benchmark::AddCustomContext("alignment_bits", std::to_string(FFDB_ALIGN));
+    benchmark::AddCustomContext("page_boundary_aware", FFDB_PAGE_BOUNDARY_AWARE ? "true" : "false");
+    benchmark::AddCustomContext("key_prefix_size", std::to_string(FFDB_KEY_PREFIX_SIZE));
+    return 0;
+}();
+
 BENCHMARK(WordCount)   ->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK(RandomLookup)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
 BENCHMARK(Insert)      ->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
