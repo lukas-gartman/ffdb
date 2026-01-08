@@ -37,6 +37,9 @@ cmake-build-debug
 cmake-build-release
 build_bench_configs
 benchmarks/bin
+benchmarks/results
+benchmarks/*.db
+benchmarks/*.txt
 build
 docs
 db-engine
