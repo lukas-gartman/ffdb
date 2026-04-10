@@ -9,11 +9,12 @@ BTREE_BIN_DIR = SCRIPT_DIR / "bin" / "btree"
 SBT_BIN_DIR = SCRIPT_DIR / "bin" / "sbt"
 RESULTS_DIR = SCRIPT_DIR / "results"
 
-def run_benchmark(binary_path: Path, output_dir: Path) -> bool:
+def run_benchmark(binary_path: Path, output_dir: Path, progress: str = "") -> bool:
     """Run a single benchmark binary and save JSON output."""
     output_file = output_dir / f"{binary_path.name}.json"
     
-    print(f"Running: {binary_path.name}...", end=" ", flush=True)
+    progress_str = f"[{progress}] " if progress else ""
+    print(f"Running {progress_str}{binary_path.name}...", end=" ", flush=True)
     
     try:
         subprocess.run(
@@ -53,9 +54,10 @@ def main():
         print(f"\nBTree benchmarks ({len(btree_binaries)}):")
         print("-"*60)
         
-        for binary in btree_binaries:
+        for idx, binary in enumerate(btree_binaries, 1):
             total_benchmarks += 1
-            if run_benchmark(binary, RESULTS_DIR):
+            progress = f"{idx}/{len(btree_binaries)}"
+            if run_benchmark(binary, RESULTS_DIR, progress):
                 successful += 1
             else:
                 failed += 1
@@ -68,9 +70,10 @@ def main():
         print(f"\nSBT benchmarks ({len(sbt_binaries)}):")
         print("-"*60)
         
-        for binary in sbt_binaries:
+        for idx, binary in enumerate(sbt_binaries, 1):
             total_benchmarks += 1
-            if run_benchmark(binary, RESULTS_DIR):
+            progress = f"{idx}/{len(sbt_binaries)}"
+            if run_benchmark(binary, RESULTS_DIR, progress):
                 successful += 1
             else:
                 failed += 1
