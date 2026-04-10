@@ -31,17 +31,23 @@
 *.out
 *.app
 
+*.tex
+*.zip
+
 .clang-format
 .idea
 cmake-build-debug
 cmake-build-release
 build_bench_configs
 benchmarks/bin
-benchmarks/results
+benchmarks/old-scripts
 benchmarks/*.db
 benchmarks/*.txt
+benchmarks/**/*.png
+benchmarks/**/*.txt
+benchmarks/**/results*
+benchmarks/__pycache__
 build
 docs
 db-engine
-
 .vscode
