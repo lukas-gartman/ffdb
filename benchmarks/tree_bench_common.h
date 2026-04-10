@@ -9,7 +9,15 @@
 #include <algorithm>
 #include <cstdint>
 #include <random>
+#include <variant>
+#include <cstring>
 #include "../src/FFDB.h"
+#include "../src/FFDBKey.h"
+
+// Mixed workload operation distribution
+static constexpr int MIXED_INSERT_PCT = 20;
+static constexpr int MIXED_REMOVE_PCT = 10;
+// MIXED_LOOKUP_PCT = 100 - MIXED_INSERT_PCT - MIXED_REMOVE_PCT = 70%
 
 std::vector<std::string> read_words_file(const std::string &filename);
 
@@ -88,11 +96,7 @@ static void run_wordcount_iteration(benchmark::State &state, Size N, const std::
             }
 
             auto op_start = std::chrono::steady_clock::now();
-            auto t2 = TreeType::update_value(
-                tree, words[i], [](uint64_t v){ return v + 1; });
-            tree = t2 == tree
-                ? TreeType::insert(tree, words[i], 1)
-                : t2;
+            auto t2 = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
             auto op_end = std::chrono::steady_clock::now();
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
             latencies.push_back(ns);
@@ -143,10 +147,7 @@ static void run_random_lookup_iteration(benchmark::State &state, Size N, const s
                     tree = db.start_txn(DB_WRITE_TXN);
                 }
 
-                auto t2 = TreeType::update_value(tree, words[i], [](uint64_t v){ return v + 1; });
-                tree = t2 == tree
-                    ? TreeType::insert(tree, words[i], 1)
-                    : t2;
+                tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
             }
 
             db.commit_txn(tree.as_offset());
@@ -178,6 +179,78 @@ static void run_random_lookup_iteration(benchmark::State &state, Size N, const s
         state.counters["latency_p95_ns"] = p95;
         state.counters["latency_p99_ns"] = p99;
         state.counters["hit_rate_pct"] = queries.empty() ? 0.0 : (100.0 * hits / queries.size());
+
+        db.commit_txn();
+    }
+}
+
+template <typename TreeType, typename TreeRef>
+static void run_sequential_lookup_iteration(benchmark::State &state, Size N, const std::vector<std::string> &words, const std::string &dbfile) {
+    for (auto _ : state) {
+        ::unlink(dbfile.c_str());
+        {
+            create_empty_db<TreeType>(dbfile, N);
+
+            FFDB db = open_db(dbfile);
+            TreeRef tree = db.start_txn(DB_WRITE_TXN);
+
+            Size halfway_mark = N / 2;
+            for (Size i = 0; i < N; ++i) {
+                if (i == halfway_mark) {
+                    db.commit_txn(tree.as_offset());
+                    tree = db.start_txn(DB_WRITE_TXN);
+                }
+
+                tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
+            }
+
+            db.commit_txn(tree.as_offset());
+        }
+
+        FFDB db = open_db(dbfile);
+        TreeRef tree = db.start_txn(DB_READ_TXN);
+
+        // Get keys in their actual storage order via in-order traversal for testing cache locality
+        std::vector<std::string> storage_order_keys;
+        storage_order_keys.reserve(TreeType::get_size(tree));
+        TreeType::traverse_inorder(tree, [&storage_order_keys](const auto &kv) {
+            std::string key_str;
+            if (std::holds_alternative<char>(kv.key.key_storage)) {
+                key_str = std::string(1, std::get<char>(kv.key.key_storage));
+            } else {
+                const auto& lk = std::get<typename std::decay_t<decltype(kv.key)>::LargeKey>(kv.key.key_storage);
+                key_str.resize(kv.key.size);
+                std::memcpy(key_str.data(), lk.key_prefix, std::min(static_cast<size_t>(PREFIX_SIZE), kv.key.size));
+                if (kv.key.size > PREFIX_SIZE) {
+                    std::memcpy(key_str.data() + PREFIX_SIZE, lk.key_ref, kv.key.size - PREFIX_SIZE);
+                }
+            }
+            storage_order_keys.push_back(key_str);
+        });
+
+        std::vector<double> latencies;
+        latencies.reserve(storage_order_keys.size());
+        Size hits = 0;
+
+        auto total_start = std::chrono::steady_clock::now();
+        for (const auto &key : storage_order_keys) {
+            auto op_start = std::chrono::steady_clock::now();
+            auto val = TreeType::get_value(tree, key);
+            auto op_end = std::chrono::steady_clock::now();
+            if (val.has_value()) hits++;
+            double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
+            latencies.push_back(ns);
+        }
+        auto total_end = std::chrono::steady_clock::now();
+        double total_ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(total_end - total_start).count();
+
+        double p50, p95, p99;
+        compute_quantiles(latencies, p50, p95, p99);
+        state.counters["throughput_ops_ms"] = (double) storage_order_keys.size() / (total_ns / 1e6);
+        state.counters["latency_p50_ns"] = p50;
+        state.counters["latency_p95_ns"] = p95;
+        state.counters["latency_p99_ns"] = p99;
+        state.counters["hit_rate_pct"] = storage_order_keys.empty() ? 0.0 : (100.0 * hits / storage_order_keys.size());
 
         db.commit_txn();
     }
@@ -294,8 +367,8 @@ static void run_remove_iteration(benchmark::State &state, Size N, const std::vec
 enum class Op { LOOKUP, INSERT, REMOVE };
 
 static void build_mixed_ops(std::vector<Op> &ops, Size total, uint64_t seed = 420691337ULL) {
-    Size inserts = (total * 20) / 100;
-    Size removes = (total * 10) / 100;
+    Size inserts = (total * MIXED_INSERT_PCT) / 100;
+    Size removes = (total * MIXED_REMOVE_PCT) / 100;
     Size lookups = total - inserts - removes;
     ops.clear();
     ops.reserve(total);
@@ -323,9 +396,9 @@ static void run_mixed_iteration(benchmark::State &state, Size N, const std::vect
             tree = TreeType::insert(tree, base_keys[i], 1);
         }
 
-        Size inserts = (N * 20) / 100; // 20% inserts
-        Size removes = (N * 10) / 100; // 10% removes
-        Size lookups = N - inserts - removes; // 70% lookups
+        Size inserts = (N * MIXED_INSERT_PCT) / 100;
+        Size removes = (N * MIXED_REMOVE_PCT) / 100;
+        Size lookups = N - inserts - removes;
 
         std::vector<std::string> ins_keys;
         build_unique_dataset(ins_keys, words_all, inserts, "mix:ins:");

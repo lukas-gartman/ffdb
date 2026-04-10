@@ -259,14 +259,26 @@ private:
     } */
 
     template<ValidKeyArg<T> K>
-    static std::pair<NodeRef<T, V, t>, bool> insert_non_full(NodeRef<T, V, t> x, const K &key, V value) {
-        // Find the position to insert the new key, starting from the right
+    static std::pair<NodeRef<T, V, t>, bool> insert_non_full(
+        NodeRef<T, V, t> x, 
+        const K &key, 
+        V value,
+        std::optional<std::function<V(V)>> update_fn = std::nullopt) {
+    
         int i = x->n - 1;
 
         if (x->is_leaf) {
             // Check if the key already exists
             for (int j = 0; j < x->n; ++j) {
-                if (x->key_values[j].key == key) return std::make_pair(x, false); // Key already exists, do not insert
+                if (x->key_values[j].key == key) {
+                    // Key exists - apply update if provided
+                    if (update_fn.has_value()) {
+                        x = upd_node(x);
+                        x->key_values[j].value = (*update_fn)(x->key_values[j].value);
+                        return std::make_pair(x, false); // false = no new key inserted
+                    }
+                    return std::make_pair(x, false); // Key already exists, do not insert
+                }
             }
 
             x = upd_node(x);
@@ -298,9 +310,9 @@ private:
         }
 
         // Insert the new key into the appropriate child
-        auto [child, collision] = insert_non_full(x->children[i], key, value);
+        auto [child, inserted] = insert_non_full(x->children[i], key, value, update_fn);
         x->children[i] = child;
-        return std::make_pair(x, collision);
+        return std::make_pair(x, inserted);
     }
     /*
     template<ValidKeyArg<T> K>
@@ -621,6 +633,24 @@ private:
         return std::make_pair(node, true);
     }
 
+    static void traverse_inorder_node(NodeRef<T, V, t> node, std::function<void(const KeyValue<T, V>&)> f) {
+        if (node == REF_NULL) return;
+
+        for (int i = 0; i < node->n; i++) {
+            // Visit left subtree
+            if (!node->is_leaf && node->children[i] != REF_NULL) {
+                traverse_inorder_node(node->children[i], f);
+            }
+            
+            f(node->key_values[i]); // Visit current key
+        }
+        
+        // Visit rightmost subtree
+        if (!node->is_leaf && node->children[node->n] != REF_NULL) {
+            traverse_inorder_node(node->children[node->n], f);
+        }
+    }
+
     static void debug_print(NodeRef<T, V, t> node, const std::string &path) {
         if (node == REF_NULL) return;
 
@@ -757,6 +787,15 @@ public:
         return btree->size;
     }
 
+    static int get_size(BTreeRef<T, V, t> btree) {
+        return btree ? btree->size : 0;
+    }
+
+    static void traverse_inorder(BTreeRef<T, V, t> btree, std::function<void(const KeyValue<T, V>&)> f) {
+        if (!btree || btree->root == REF_NULL) return;
+        traverse_inorder_node(btree->root, f);
+    }
+
     template <ValidKeyArg<T> K>
     static std::optional<V> get_value(BTreeRef<T, V, t> btree, const K &key) {
         if (!btree) return std::nullopt;
@@ -784,6 +823,27 @@ public:
         if (!updated) return btree;
 
         return upd_header(btree, new_root, btree->size);
+    }
+
+    template<ValidKeyArg<T> K>
+    static BTreeRef<T, V, t> upsert(BTreeRef<T, V, t> btree, const K &key, V value, std::function<V(V)> update_fn) {
+        if (btree->root == REF_NULL) {
+            btree = upd_header(btree, create_node(true), 1);
+            btree->root->key_values[0].key = key;
+            btree->root->key_values[0].value = value;
+            btree->root->n = 1;
+            return btree;
+        }
+
+        if (btree->root->n == 2 * t - 1) {
+            auto new_root = create_node(false);
+            new_root->children[0] = btree->root;
+            auto [root, inserted] = insert_non_full(split_child(upd_node(new_root), 0), key, value, update_fn);
+            return upd_header(btree, root, btree->size + (inserted ? 1 : 0));
+        }
+
+        auto [new_root, inserted] = insert_non_full(upd_node(btree->root), key, value, update_fn);
+        return upd_header(btree, new_root, btree->size + (inserted ? 1 : 0));
     }
 
     template <ValidKeyArg<T> K>

@@ -37,6 +37,21 @@ static void RandomLookup(benchmark::State &state) {
 }
 
 template <int DEGREE>
+static void SequentialLookup(benchmark::State &state) {
+    using BT = BTreeFunctional<char, uint64_t, DEGREE>;
+    using BTRef = BTreeRef<char, uint64_t, DEGREE>;
+
+    auto N = (Size) state.range(0);
+    std::string dbfile = "sequential_lookup_" + std::to_string(N) + ".db";
+
+    auto words_all = load_words();
+    std::vector<std::string> words;
+    build_dataset(words, words_all, N);
+
+    run_sequential_lookup_iteration<BT, BTRef>(state, N, words, dbfile);
+}
+
+template <int DEGREE>
 static void Insert(benchmark::State &state) {
     using BT = BTreeFunctional<char, uint64_t, DEGREE>;
     using BTRef = BTreeRef<char, uint64_t, DEGREE>;
@@ -87,8 +102,9 @@ static int setup_context = [] {
     return 0;
 }();
 
-BENCHMARK_TEMPLATE(WordCount,    DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(RandomLookup, DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Insert,       DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Remove,       DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
-BENCHMARK_TEMPLATE(Mixed,        DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(WordCount,        DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(RandomLookup,     DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(SequentialLookup, DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Insert,           DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Remove,           DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(Mixed,            DEGREE)->Arg(100'000)->Arg(1'000'000)->Arg(5'000'000)->Repetitions(10)->MinWarmUpTime(0.5)->Unit(benchmark::kMillisecond);
