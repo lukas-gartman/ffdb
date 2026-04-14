@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
-# Project root (assumes script is in repo/benchmarks)
+# Paths
 SCRIPT_DIR = Path(__file__).parent
-ROOT_DIR = SCRIPT_DIR.parent
-BUILD_DIR = ROOT_DIR / "build_bench_configs" / "shared"
-BTREE_BIN_OUTPUT = SCRIPT_DIR / "bin" / "btree"
-SBT_BIN_OUTPUT = SCRIPT_DIR / "bin" / "sbt"
+BENCHMARKS_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = BENCHMARKS_DIR.parent
+BUILD_DIR = BENCHMARKS_DIR / "build_bench_configs" / "shared"
+BTREE_BIN_OUTPUT = BENCHMARKS_DIR / "bin" / "btree"
+SBT_BIN_OUTPUT = BENCHMARKS_DIR / "bin" / "sbt"
 
 @dataclass(frozen=True)
 class BTreeConfig:
@@ -55,27 +56,7 @@ def initial_cmake_setup():
 
     cmake_cmd = [
         "cmake",
-        str(ROOT_DIR),
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -march=native -mtune=native"
-    ]
-
-    subprocess.run(cmake_cmd, cwd=BUILD_DIR, check=True)
-    print("CMake configuration complete")
-
-def initial_cmake_setup():
-    """Set up the build directory once with base configuration."""
-    if BUILD_DIR.exists():
-        shutil.rmtree(BUILD_DIR)
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
-
-    print(f"\n{'='*60}")
-    print("Initial CMake configuration...")
-    print(f"{'='*60}")
-
-    cmake_cmd = [
-        "cmake",
-        str(ROOT_DIR),
+        str(PROJECT_ROOT),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -march=native -mtune=native"
     ]
@@ -96,7 +77,7 @@ def reconfigure_and_build(config_name: str, cmake_defines: Dict[str, str],
     # Reconfigure with new defines
     cmake_cmd = [
         "cmake",
-        str(ROOT_DIR),
+        str(PROJECT_ROOT),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -march=native -mtune=native"
     ]

@@ -5,9 +5,10 @@ import sys
 
 # Directories
 SCRIPT_DIR = Path(__file__).parent
-BTREE_BIN_DIR = SCRIPT_DIR / "bin" / "btree"
-SBT_BIN_DIR = SCRIPT_DIR / "bin" / "sbt"
-RESULTS_DIR = SCRIPT_DIR / "results"
+BENCHMARKS_DIR = SCRIPT_DIR.parent
+BTREE_BIN_DIR = BENCHMARKS_DIR / "bin" / "btree"
+SBT_BIN_DIR = BENCHMARKS_DIR / "bin" / "sbt"
+RESULTS_DIR = BENCHMARKS_DIR / "results"
 
 def run_benchmark(binary_path: Path, output_dir: Path, progress: str = "") -> bool:
     """Run a single benchmark binary and save JSON output."""
