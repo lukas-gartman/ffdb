@@ -716,7 +716,7 @@ public:
         }
 
         // To avoid unnecessary Cow triggered by split_child, check if the key exists manually.
-        if (find_node(btree->root, key) != REF_NULL) return btree;
+        //if (find_node(btree->root, key) != REF_NULL) return btree;
 
         // Split if node is full.
         if (btree->root->n == 2 * t - 1) {
