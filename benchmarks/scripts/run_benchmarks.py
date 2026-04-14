@@ -4,15 +4,16 @@ from pathlib import Path
 import sys
 
 # Directories
-SCRIPT_DIR = Path(__file__).parent
+SCRIPT_DIR = Path(__file__).resolve().parent
 BENCHMARKS_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = BENCHMARKS_DIR.parent
 BTREE_BIN_DIR = BENCHMARKS_DIR / "bin" / "btree"
 SBT_BIN_DIR = BENCHMARKS_DIR / "bin" / "sbt"
 RESULTS_DIR = BENCHMARKS_DIR / "results"
 
 def run_benchmark(binary_path: Path, output_dir: Path, progress: str = "") -> bool:
     """Run a single benchmark binary and save JSON output."""
-    output_file = output_dir / f"{binary_path.name}.json"
+    output_file = (output_dir / f"{binary_path.name}.json").resolve()
     
     progress_str = f"[{progress}] " if progress else ""
     print(f"Running {progress_str}{binary_path.name}...", end=" ", flush=True)
@@ -24,6 +25,7 @@ def run_benchmark(binary_path: Path, output_dir: Path, progress: str = "") -> bo
                 "--benchmark_format=json",
                 f"--benchmark_out={output_file}"
             ],
+            cwd=PROJECT_ROOT,
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
