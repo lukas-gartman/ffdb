@@ -97,7 +97,11 @@ static void run_wordcount_iteration(benchmark::State &state, Size N, const std::
             }
 
             auto op_start = std::chrono::steady_clock::now();
-            tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
+            auto t2 = TreeType::update_value(
+                tree, words[i], [](uint64_t v){ return v + 1; });
+            tree = t2 == tree
+                ? TreeType::insert(tree, words[i], 1)
+                : t2;
             auto op_end = std::chrono::steady_clock::now();
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
             latencies.push_back(ns);
@@ -148,7 +152,10 @@ static void run_random_lookup_iteration(benchmark::State &state, Size N, const s
                     tree = db.start_txn(DB_WRITE_TXN);
                 }
 
-                tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
+                auto t2 = TreeType::update_value(tree, words[i], [](uint64_t v){ return v + 1; });
+                tree = t2 == tree
+                    ? TreeType::insert(tree, words[i], 1)
+                    : t2;
             }
 
             db.commit_txn(tree.as_offset());
@@ -202,7 +209,10 @@ static void run_sequential_lookup_iteration(benchmark::State &state, Size N, con
                     tree = db.start_txn(DB_WRITE_TXN);
                 }
 
-                tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
+                auto t2 = TreeType::update_value(tree, words[i], [](uint64_t v){ return v + 1; });
+                tree = t2 == tree
+                    ? TreeType::insert(tree, words[i], 1)
+                    : t2;
             }
 
             db.commit_txn(tree.as_offset());
