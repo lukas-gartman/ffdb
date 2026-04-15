@@ -96,7 +96,7 @@ static void run_wordcount_iteration(benchmark::State &state, Size N, const std::
             }
 
             auto op_start = std::chrono::steady_clock::now();
-            auto t2 = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
+            tree = TreeType::upsert(tree, words[i], 1, [](uint64_t v){ return v + 1; });
             auto op_end = std::chrono::steady_clock::now();
             double ns = (double) std::chrono::duration_cast<std::chrono::nanoseconds>(op_end - op_start).count();
             latencies.push_back(ns);
