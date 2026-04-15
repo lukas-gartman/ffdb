@@ -220,7 +220,9 @@ static void run_sequential_lookup_iteration(benchmark::State &state, Size N, con
             } else {
                 const auto& lk = std::get<typename std::decay_t<decltype(kv.key)>::LargeKey>(kv.key.key_storage);
                 key_str.resize(kv.key.size);
-                std::memcpy(key_str.data(), lk.key_prefix, std::min(static_cast<size_t>(PREFIX_SIZE), kv.key.size));
+                if constexpr (PREFIX_SIZE > 0) {
+                    std::memcpy(key_str.data(), lk.key_prefix, std::min(static_cast<size_t>(PREFIX_SIZE), kv.key.size));
+                }
                 if (kv.key.size > PREFIX_SIZE) {
                     std::memcpy(key_str.data() + PREFIX_SIZE, lk.key_ref, kv.key.size - PREFIX_SIZE);
                 }

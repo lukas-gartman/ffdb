@@ -124,7 +124,6 @@ private:
         new (&*node) Node<T, V, t>(current_db()->get_txn_id(), 0, is_leaf);
 
         for (int i = 0; i < 2 * t - 1; ++i) {
-            node->key_values[i].key = T();
             node->children[i] = REF_NULL;
         }
         node->children[2 * t - 1] = REF_NULL;
@@ -311,6 +310,9 @@ private:
 
         // Insert the new key into the appropriate child
         auto [child, inserted] = insert_non_full(x->children[i], key, value, update_fn);
+        if (inserted) {
+            x = upd_node(x);
+        }
         x->children[i] = child;
         return std::make_pair(x, inserted);
     }
