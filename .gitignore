@@ -39,10 +39,7 @@
 cmake-build-debug
 cmake-build-release
 build_bench_configs
-benchmarks/bin
 benchmarks/old-scripts
-benchmarks/*.db
-benchmarks/*.txt
 benchmarks/**/*.png
 benchmarks/**/*.txt
 benchmarks/**/results*
@@ -51,3 +48,6 @@ build
 docs
 db-engine
 .vscode
+
+**/*.db
+**/bin*
