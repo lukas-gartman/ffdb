@@ -27,6 +27,7 @@ static std::vector<std::string> load_words() {
 }
 
 static Size initial_size_for(Size n) {
+    if (n <= 100'000)    return  64ull * 1024 * 1024;
     if (n <= 1'000'000)  return 512ull * 1024 * 1024;
     if (n <= 5'000'000)  return   2ull * 1024 * 1024 * 1024;
     if (n <= 20'000'000) return   8ull * 1024 * 1024 * 1024;
