@@ -2,6 +2,7 @@
 #define SBT_FUNCTIONAL_H
 
 #include <algorithm>
+#include <functional>
 #include "FFDB.h"
 #include "FFDBKey.h"
 #include "Typedefs.h"
